@@ -57,12 +57,31 @@ def _seed_secret_from_doc() -> list[int] | None:
     return nums if len(nums) == 64 else None
 
 
+def _secret_from_env() -> list[int] | None:
+    """SOLANA_WALLET_SECRET: the 64-int secret-key array as JSON, for hosts
+    where keys/ isn't deployed."""
+    raw = os.getenv("SOLANA_WALLET_SECRET", "").strip()
+    if not raw:
+        return None
+    nums = json.loads(raw)
+    if not isinstance(nums, list) or len(nums) != 64:
+        raise ValueError("SOLANA_WALLET_SECRET must be a JSON array of 64 ints")
+    return [int(n) for n in nums]
+
+
 def load_or_create_wallet() -> Keypair:
+    # 1. explicit env secret (deployed hosts)
+    env_secret = _secret_from_env()
+    if env_secret is not None:
+        return Keypair.from_bytes(bytes(env_secret))
+
+    # 2. local wallet file
     os.makedirs(KEYS_DIR, exist_ok=True)
     if os.path.exists(WALLET_PATH):
         with open(WALLET_PATH) as f:
             return Keypair.from_bytes(bytes(json.load(f)))
 
+    # 3. seed from the committed-locally keypair doc, else generate a fresh one
     secret = _seed_secret_from_doc()
     keypair = Keypair.from_bytes(bytes(secret)) if secret else Keypair()
     with open(WALLET_PATH, "w") as f:

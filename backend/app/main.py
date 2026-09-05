@@ -14,11 +14,13 @@ TODO(me, before this touches a real disaster response):
     and structured logging / request tracing.
 """
 
+import logging
 import os
 import uuid
 from datetime import date, datetime, timezone
 
 import httpx
+import logfire
 import snowflake.connector
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,6 +28,25 @@ from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+
+# --- logging -------------------------------------------------------------------
+# Plain stdout logging always; Logfire tracing only when LOGFIRE_TOKEN is set
+# (locally: `logfire auth`; on a host: set the token env var). No token -> no-op.
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
+)
+log = logging.getLogger("relieftrace")
+
+logfire.configure(
+    service_name="relieftrace-api",
+    send_to_logfire="if-token-present",
+    console=False,
+)
+try:
+    logfire.instrument_httpx()  # traces the outbound Gemini call
+except Exception as _exc:  # optional extra missing - not fatal
+    log.warning("logfire httpx instrumentation unavailable: %s", _exc)
 
 from app.cache import cached, invalidate
 from app.db import get_cursor
@@ -72,9 +93,28 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
+try:
+    logfire.instrument_fastapi(app, capture_headers=False)
+except Exception as _exc:  # optional extra missing - not fatal
+    log.warning("logfire fastapi instrumentation unavailable: %s", _exc)
+
+log.info(
+    "ReliefTrace API starting | env=%s | gemini=%s | gemini_key=%s | cors=%s",
+    "production" if IS_PRODUCTION else "development",
+    GEMINI_MODEL,
+    "set" if GEMINI_API_KEY else "MISSING",
+    ",".join(FRONTEND_ORIGINS),
+)
+
+
+@app.on_event("startup")
+def _log_startup():
+    log.info("startup complete | logfire=%s", "on" if os.getenv("LOGFIRE_TOKEN") else "off (no token)")
+
 
 @app.exception_handler(snowflake.connector.Error)
 def snowflake_error_handler(request: Request, exc: snowflake.connector.Error):
+    log.error("snowflake error on %s: %s", request.url.path, exc)
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content={"detail": "The database is temporarily unavailable. Please try again shortly."},
@@ -89,6 +129,7 @@ def run_query(sql: str, params: dict | None = None) -> list[dict]:
     except HTTPException:
         raise
     except Exception as exc:
+        log.error("query failed: %s | sql=%s", exc, " ".join(sql.split())[:200])
         raise HTTPException(status_code=500, detail=f"Snowflake query failed: {exc}")
 
 
@@ -276,6 +317,11 @@ def contribute(request: Request, payload: ContributionInput):
     delivery_id = str(uuid.uuid4())
     today = date.today()
 
+    log.info(
+        "contribute: %s %s -> %s by %s (delivery=%s)",
+        payload.quantity, payload.resource_type, zone, donor, delivery_id,
+    )
+
     # 1. Anchor on-chain first - if the memo tx fails we don't want a
     #    delivery row claiming to be verified when it isn't.
     #    Note: only the donor name goes on-chain, never the email address.
@@ -284,7 +330,9 @@ def contribute(request: Request, payload: ContributionInput):
         tx_sig = send_memo(
             build_memo(donor=donor, resource=payload.resource_type, zone=zone, quantity=payload.quantity)
         )
+        log.info("contribute: on-chain ok delivery=%s sig=%s", delivery_id, tx_sig)
     except Exception as exc:
+        log.error("contribute: on-chain FAILED delivery=%s: %s", delivery_id, exc)
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY,
             f"Could not record the contribution on Solana devnet: {exc}",
@@ -316,11 +364,16 @@ def contribute(request: Request, payload: ContributionInput):
             )
             cur.connection.commit()
     except Exception as exc:
+        log.error(
+            "contribute: DB write FAILED after on-chain success delivery=%s sig=%s: %s",
+            delivery_id, tx_sig, exc,
+        )
         raise HTTPException(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             f"On-chain record {tx_sig} succeeded but the database write failed: {exc}",
         )
 
+    log.info("contribute: persisted delivery=%s", delivery_id)
     # new delivery changes the deliveries table and the gap/trend rollups
     invalidate("recent_deliveries", "response_trend", "zone_gaps", "resource_breakdown")
 
@@ -373,6 +426,7 @@ def ai_briefing(request: Request):
     gaps = zone_gaps()
     trend = response_trend()
     prompt = _build_briefing_prompt(gaps, trend)
+    log.info("ai-briefing: calling %s with %d gap rows", GEMINI_MODEL, len(gaps))
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
     try:
@@ -386,10 +440,13 @@ def ai_briefing(request: Request):
         data = resp.json()
         text = data["candidates"][0]["content"]["parts"][0]["text"]
     except httpx.HTTPStatusError as exc:
+        log.error("ai-briefing: Gemini HTTP %s: %s", exc.response.status_code, exc.response.text[:300])
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Gemini API error: {exc.response.text}")
     except (httpx.HTTPError, KeyError, IndexError) as exc:
+        log.error("ai-briefing: Gemini call failed: %s", exc)
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Gemini API call failed: {exc}")
 
+    log.info("ai-briefing: ok (%d chars)", len(text))
     return AiBriefing(briefing=text, generated_at=datetime.now(timezone.utc).isoformat())
 
 
