@@ -1,0 +1,6 @@
+# Committed Doppler config for this repo.
+# Run `doppler setup` in this directory to link your local CLI to the
+# project/config below (create them first at dashboard.doppler.com).
+setup:
+  project: relieftrace
+  config: dev

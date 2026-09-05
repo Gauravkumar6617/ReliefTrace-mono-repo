@@ -1,0 +1,24 @@
+[project]
+name = "snow-dontate"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "snowflake-connector-python>=3.12.0",
+    "python-dotenv>=1.0.1",
+    "faker>=30.0.0",
+    "pandas>=2.2.0",
+    "pydantic>=2.9.0",
+    "slowapi>=0.1.9",
+    "cryptography>=43.0.0",
+    "httpx>=0.27.0",
+    "solders>=0.21.0,<0.24.0",
+    "solana>=0.34.0,<0.35.0",
+    "redis>=5.0.0",
+    "email-validator>=2.0",
+]
+
+[tool.uv.sources]

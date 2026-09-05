@@ -1,0 +1,39 @@
+# --- secrets & credentials ---
+.env
+.env.*
+!.env.example
+*.p8
+*.pem
+backend/keys/
+doppler.yaml.local
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+
+# --- generated data ---
+backend/data/*.csv
+
+# --- Node / Vite ---
+node_modules/
+frontend/dist/
+*.local
+
+# --- editor / OS ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# stray Snowsight exports / one-off setup dumps
+snowflake_schema*.csv
+snowflake_schema*.tsv
+/snowflake_schema.sql
+
+# stale pre-reorg CSVs at backend root
+backend/*.csv

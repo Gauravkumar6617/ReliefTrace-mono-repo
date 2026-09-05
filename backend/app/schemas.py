@@ -1,0 +1,79 @@
+"""Pydantic models for ReliefTrace's API - read-only insights plus the one
+write path (POST /api/contribute)."""
+
+from datetime import date
+from typing import Annotated, Literal, get_args
+
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+ResourceType = Literal["Food", "Water", "Shelter", "Medical", "Clothing"]
+RESOURCE_TYPES = list(get_args(ResourceType))
+
+
+class ZoneGap(BaseModel):
+    zone_name: str
+    resource_type: str
+    quantity_needed: float
+    quantity_fulfilled: float
+    unmet_need: float
+    urgency_level: str
+
+
+class ResponseTrendPoint(BaseModel):
+    day: date
+    requests_count: int
+    quantity_requested: float
+    deliveries_count: int
+    quantity_delivered: float
+
+
+class ResourceBreakdown(BaseModel):
+    resource_type: str
+    total_needed: float
+    total_fulfilled: float
+    unmet_need: float
+
+
+class RecentDelivery(BaseModel):
+    delivery_id: str
+    zone_name: str
+    donor_org: str
+    donor_email: str | None = None
+    resource_type: str
+    quantity_sent: float
+    delivery_date: date
+    solana_tx_sig: str | None = None
+
+
+class AiBriefing(BaseModel):
+    briefing: str
+    generated_at: str
+
+
+class ContributionInput(BaseModel):
+    donor_name: Annotated[str, Field(min_length=1, max_length=80)]
+    donor_email: EmailStr
+    resource_type: ResourceType
+    quantity: Annotated[float, Field(gt=0, le=1_000_000)]
+    zone_name: Annotated[str, Field(min_length=1, max_length=80)]
+
+    @field_validator("donor_name", "zone_name")
+    @classmethod
+    def _strip_and_check(cls, v: str) -> str:
+        v = " ".join(v.split())  # collapse whitespace, trim
+        if not v:
+            raise ValueError("must not be blank")
+        return v
+
+
+class ContributionResult(BaseModel):
+    delivery_id: str
+    donor_name: str
+    donor_email: str
+    resource_type: str
+    quantity: float
+    zone_name: str
+    delivery_date: date
+    solana_tx_sig: str
+    explorer_url: str
+    verified: bool = True
