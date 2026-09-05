@@ -19,6 +19,9 @@ dependencies = [
     "solana>=0.34.0,<0.35.0",
     "redis>=5.0.0",
     "email-validator>=2.0",
+    "fastapi-cli>=0.0.32",
+    "fastapi-cloud-cli>=0.25.0",
+    "logfire[fastapi,httpx]>=5.0.0",
 ]
 
 [tool.uv.sources]

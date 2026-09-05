@@ -13,6 +13,7 @@ slowly, so a short TTL turns a multi-second load into an instant one.
 `invalidate()` is called after a contribution so the next load reflects it.
 """
 
+import logging
 import os
 import pickle
 import threading
@@ -22,6 +23,8 @@ from functools import wraps
 from dotenv import load_dotenv
 
 load_dotenv()  # cache.py is imported before db.py, so load .env here too
+
+log = logging.getLogger("relieftrace.cache")
 
 DEFAULT_TTL = 60.0
 _NS = "relieftrace:"
@@ -42,10 +45,10 @@ if _REDIS_URL:
         _redis.ping()
         _redis_label = f"Redis ({_REDIS_URL})"
     except Exception as exc:  # noqa: BLE001 - any failure -> fall back
-        print(f"cache: REDIS_URL set but unreachable ({exc}); using in-process cache")
+        log.warning("REDIS_URL set but unreachable (%s); using in-process cache", exc)
         _redis = None
 
-print(f"cache: backend = {_redis_label}")
+log.info("cache backend = %s", _redis_label)
 
 _MISS = object()
 
