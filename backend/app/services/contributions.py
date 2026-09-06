@@ -105,4 +105,5 @@ def create_contribution(payload: ContributionInput) -> ContributionResult:
         delivery_date=today,
         solana_tx_sig=tx_sig,
         explorer_url=f"https://explorer.solana.com/tx/{tx_sig}?cluster={settings.solana_cluster}",
+        receipt_email=settings.email_enabled,
     )

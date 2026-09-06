@@ -37,3 +37,6 @@ snowflake_schema*.tsv
 
 # stale pre-reorg CSVs at backend root
 backend/*.csv
+
+# stray archives
+*.zip

@@ -133,6 +133,7 @@ export interface ContributionResult {
   solana_tx_sig: string;
   explorer_url: string;
   verified: boolean;
+  receipt_email: boolean;
 }
 
 export { ApiError };

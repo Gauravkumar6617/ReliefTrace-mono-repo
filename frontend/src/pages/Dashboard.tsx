@@ -335,6 +335,11 @@ export function Dashboard() {
             >
               View on-chain ↗
             </a>
+            {confirmation.receipt_email && (
+              <p className="confirmation-email">
+                A receipt is on its way to {confirmation.donor_email}.
+              </p>
+            )}
           </div>
         )}
       </section>

@@ -1,0 +1,13 @@
+{
+  "name": "ReliefTrace",
+  "short_name": "ReliefTrace",
+  "description": "Aid you can actually verify.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf8f3",
+  "theme_color": "#2f6f62",
+  "icons": [
+    { "src": "/favicon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/favicon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

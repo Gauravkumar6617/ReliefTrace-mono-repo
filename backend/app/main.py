@@ -44,11 +44,12 @@ except Exception:  # pragma: no cover
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info(
-        "ReliefTrace API starting | env=%s | gemini=%s | gemini_key=%s | api_auth=%s | cors=%s",
+        "ReliefTrace API starting | env=%s | gemini=%s | gemini_key=%s | api_auth=%s | email=%s | cors=%s",
         settings.environment,
         settings.gemini_model,
         "set" if settings.gemini_api_key else "MISSING",
         "on" if settings.api_key else "off (no API_KEY)",
+        "on" if settings.email_enabled else "off (no SMTP_HOST)",
         ",".join(settings.frontend_origins),
     )
     # warm the Snowflake pool off the request path

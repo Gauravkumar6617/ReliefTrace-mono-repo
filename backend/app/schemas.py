@@ -111,3 +111,4 @@ class ContributionResult(BaseModel):
     solana_tx_sig: str
     explorer_url: str
     verified: bool = True
+    receipt_email: bool = False  # a confirmation email was queued to the donor

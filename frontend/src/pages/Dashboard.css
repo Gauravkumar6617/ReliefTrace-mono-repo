@@ -590,3 +590,9 @@ th {
   color: #fff;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+.confirmation-email {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--axis, #6b6459);
+}

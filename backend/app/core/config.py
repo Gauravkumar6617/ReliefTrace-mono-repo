@@ -57,6 +57,15 @@ class Settings:
     # `X-API-Key` request header. Unset = auth disabled (local dev).
     api_key: str | None = os.getenv("API_KEY") or None
 
+    # --- outbound email (contribution receipt) -----------------------
+    # All optional. With SMTP_HOST unset, email is simply skipped.
+    smtp_host: str | None = os.getenv("SMTP_HOST") or None
+    smtp_port: int = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user: str | None = os.getenv("SMTP_USER") or None
+    smtp_password: str | None = os.getenv("SMTP_PASSWORD") or None
+    smtp_starttls: bool = os.getenv("SMTP_STARTTLS", "true").lower() not in {"0", "false", "no"}
+    smtp_from: str = os.getenv("SMTP_FROM", "ReliefTrace <noreply@relieftrace.local>")
+
     # --- Gemini --------------------------------------------------------
     gemini_api_key: str | None = os.getenv("GEMINI_API_KEY")
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
@@ -67,6 +76,10 @@ class Settings:
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @property
+    def email_enabled(self) -> bool:
+        return bool(self.smtp_host)
 
 
 settings = Settings()
