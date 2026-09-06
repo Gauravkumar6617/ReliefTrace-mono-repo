@@ -83,8 +83,26 @@ export interface RecentDelivery {
   solana_tx_sig: string | null;
 }
 
+export interface BriefingPriority {
+  rank: number;
+  zone: string;
+  urgency: string;
+  reason: string;
+  recommended_action: string;
+  key_resources: string[];
+  confidence: "high" | "medium" | "low";
+}
+
 export interface AiBriefing {
   briefing: string;
+  priorities: BriefingPriority[];
+  generated_at: string;
+}
+
+export interface AskResult {
+  question: string;
+  answer: string;
+  tools_used: string[];
   generated_at: string;
 }
 
@@ -128,6 +146,7 @@ export const api = {
   recentDeliveries: (limit = 20) =>
     getJson<RecentDelivery[]>(`/api/deliveries/recent?limit=${limit}`),
   aiBriefing: () => getJson<AiBriefing>("/api/insights/ai-briefing"),
+  ask: (question: string) => postJson<AskResult>("/api/ask", { question }),
   zones: () => getJson<string[]>("/api/zones"),
   resourceTypes: () => getJson<string[]>("/api/resource-types"),
   contribute: (input: ContributionInput) =>

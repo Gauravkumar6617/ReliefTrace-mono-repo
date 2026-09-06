@@ -1,8 +1,8 @@
 """
-AI situation briefing. Sends the current zone gaps + response-trend summary to
-Gemini and asks it to prioritise zones. The result is cached (it re-summarises
-the same slow-moving data on every call) and invalidated when a contribution
-lands.
+AI situation briefing. Feeds the current zone gaps + 30-day trend to Gemini and
+asks for a *structured* prioritisation: a narrative plus ranked zones, each with
+a reason, a recommended action, the key resources, and a confidence level.
+Cached (it re-summarises slow-moving data) and invalidated on a contribution.
 """
 
 from __future__ import annotations
@@ -10,17 +10,51 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-import httpx
 from fastapi import HTTPException, status
 
 from app.core.cache import cached
-from app.core.config import settings
-from app.schemas import AiBriefing, ResponseTrendPoint, ZoneGap
+from app.schemas import AiBriefing, BriefingPriority, ResponseTrendPoint, ZoneGap
+from app.services.gemini import generate_json
 from app.services.insights import response_trend, zone_gaps
 
 log = logging.getLogger("relieftrace.briefing")
 
 _BRIEFING_TTL = 3600
+
+_SYSTEM = (
+    "You are a disaster-relief operations analyst. You reason only from the data "
+    "the user provides - never invent zones, resources, or numbers. Keep language "
+    "concrete and operational."
+)
+
+# Gemini responseSchema (a constrained subset of JSON Schema).
+_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "narrative": {
+            "type": "string",
+            "description": "One short paragraph summarising the overall situation.",
+        },
+        "priorities": {
+            "type": "array",
+            "description": "Up to 5 zones needing intervention first, most urgent first.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "rank": {"type": "integer"},
+                    "zone": {"type": "string"},
+                    "urgency": {"type": "string", "enum": ["critical", "medium", "low"]},
+                    "reason": {"type": "string"},
+                    "recommended_action": {"type": "string"},
+                    "key_resources": {"type": "array", "items": {"type": "string"}},
+                    "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+                },
+                "required": ["rank", "zone", "reason", "recommended_action"],
+            },
+        },
+    },
+    "required": ["narrative", "priorities"],
+}
 
 
 def _build_prompt(gaps: list[ZoneGap], trend: list[ResponseTrendPoint]) -> str:
@@ -35,11 +69,7 @@ def _build_prompt(gaps: list[ZoneGap], trend: list[ResponseTrendPoint]) -> str:
         f"total delivered {sum(t.quantity_delivered for t in trend):.0f}."
     )
     return (
-        "You are a disaster relief operations analyst. Given the following zone-level "
-        "resource gaps and a summary of the 30-day response trend, identify which zones "
-        "need urgent intervention first and why. Be specific about zone names and resource "
-        "types, and keep the reasoning brief (a short paragraph plus a prioritized bullet "
-        "list of at most 5 zones). Do not invent data not present below.\n\n"
+        "Prioritise which zones need urgent intervention first, and why.\n\n"
         f"Response trend summary: {trend_summary}\n\n"
         f"Zone resource gaps (sorted by unmet need, most severe first):\n{gap_lines}\n"
     )
@@ -47,31 +77,26 @@ def _build_prompt(gaps: list[ZoneGap], trend: list[ResponseTrendPoint]) -> str:
 
 @cached(ttl=_BRIEFING_TTL)
 def generate_briefing() -> AiBriefing:
-    if not settings.gemini_api_key:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "GEMINI_API_KEY is not configured")
-
     gaps = zone_gaps()
     trend = response_trend()
-    prompt = _build_prompt(gaps, trend)
-    log.info("ai-briefing: calling %s with %d gap rows", settings.gemini_model, len(gaps))
+    log.info("ai-briefing: calling gemini with %d gap rows", len(gaps))
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent"
-    try:
-        resp = httpx.post(
-            url,
-            params={"key": settings.gemini_api_key},
-            json={"contents": [{"parts": [{"text": prompt}]}]},
-            timeout=30.0,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
-    except httpx.HTTPStatusError as exc:
-        log.error("ai-briefing: Gemini HTTP %s: %s", exc.response.status_code, exc.response.text[:300])
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Gemini API error: {exc.response.text}")
-    except (httpx.HTTPError, KeyError, IndexError) as exc:
-        log.error("ai-briefing: Gemini call failed: %s", exc)
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Gemini API call failed: {exc}")
+    data = generate_json(_build_prompt(gaps, trend), schema=_SCHEMA, system=_SYSTEM)
 
-    log.info("ai-briefing: ok (%d chars)", len(text))
-    return AiBriefing(briefing=text, generated_at=datetime.now(timezone.utc).isoformat())
+    narrative = str(data.get("narrative", "")).strip()
+    priorities: list[BriefingPriority] = []
+    for item in data.get("priorities", []) or []:
+        try:
+            priorities.append(BriefingPriority(**item))
+        except Exception as exc:  # noqa: BLE001 - skip a malformed row, keep the rest
+            log.warning("ai-briefing: dropping malformed priority %s (%s)", item, exc)
+
+    if not narrative and not priorities:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Gemini returned an empty briefing")
+
+    priorities.sort(key=lambda p: p.rank)
+    return AiBriefing(
+        briefing=narrative,
+        priorities=priorities,
+        generated_at=datetime.now(timezone.utc).isoformat(),
+    )

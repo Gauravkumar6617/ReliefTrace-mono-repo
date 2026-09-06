@@ -488,3 +488,105 @@ th {
   height: 1px;
   overflow: hidden;
 }
+
+/* --- AI briefing: ranked priority cards ------------------------------- */
+.priority-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.priority-card {
+  border: 1px solid var(--border, #d9d4c9);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  background: var(--panel-alt, #faf8f3);
+}
+.priority-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.priority-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: #2f2a24;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.priority-zone {
+  font-weight: 700;
+  font-size: 0.98rem;
+}
+.confidence-chip {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  opacity: 0.85;
+}
+.confidence-high { color: #2f6f62; }
+.confidence-medium { color: #b9832a; }
+.confidence-low { color: #9c2b26; }
+.priority-reason { margin: 0.5rem 0 0.35rem; color: var(--text, #3a352e); font-size: 0.9rem; }
+.priority-action { margin: 0; font-size: 0.9rem; }
+.priority-resources { margin-top: 0.5rem; display: flex; gap: 0.35rem; flex-wrap: wrap; }
+.resource-chip {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--chip-bg, #ece7db);
+}
+
+/* --- Ask ReliefTrace ------------------------------------------------- */
+.ask-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+.ask-form input {
+  flex: 1 1 260px;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border, #d9d4c9);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+.ask-samples { margin-top: 0.6rem; display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.ask-sample {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  border: 1px dashed var(--border, #cfc8b8);
+  background: transparent;
+  color: var(--axis, #6b6459);
+  cursor: pointer;
+}
+.ask-sample:hover:not(:disabled) { border-style: solid; }
+.ask-answer { margin-top: 0.9rem; }
+.ask-question { margin: 0 0 0.4rem; font-style: italic; color: var(--axis, #6b6459); }
+.ask-trace {
+  margin-top: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+.ask-trace-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--axis, #6b6459); }
+.tool-chip {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  background: #2f2a24;
+  color: #fff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}

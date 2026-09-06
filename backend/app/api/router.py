@@ -2,11 +2,12 @@
 
 from fastapi import APIRouter
 
-from app.api.routes import briefing, contribute, health, insights, stream
+from app.api.routes import ask, briefing, contribute, health, insights, stream
 
 api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(insights.router)
 api_router.include_router(contribute.router)
 api_router.include_router(briefing.router)
+api_router.include_router(ask.router)
 api_router.include_router(stream.router)

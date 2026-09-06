@@ -45,8 +45,38 @@ class RecentDelivery(BaseModel):
     solana_tx_sig: str | None = None
 
 
+class BriefingPriority(BaseModel):
+    rank: int
+    zone: str
+    urgency: str
+    reason: str
+    recommended_action: str
+    key_resources: list[str] = []
+    confidence: Literal["high", "medium", "low"] = "medium"
+
+
 class AiBriefing(BaseModel):
-    briefing: str
+    briefing: str  # the narrative paragraph (kept for backwards compatibility)
+    priorities: list[BriefingPriority] = []
+    generated_at: str
+
+
+class AskInput(BaseModel):
+    question: Annotated[str, Field(min_length=3, max_length=400)]
+
+    @field_validator("question")
+    @classmethod
+    def _clean(cls, v: str) -> str:
+        v = " ".join(v.split())
+        if not v:
+            raise ValueError("must not be blank")
+        return v
+
+
+class AskResult(BaseModel):
+    question: str
+    answer: str
+    tools_used: list[str] = []
     generated_at: str
 
 

@@ -16,6 +16,8 @@ import {
 import {
   api,
   ApiError,
+  type AiBriefing,
+  type AskResult,
   type ContributionResult,
   type UrgencyLevel,
   type ZoneGap,
@@ -91,9 +93,14 @@ export function Dashboard() {
     reload: loadDashboard,
   } = useDashboard();
 
-  const [briefing, setBriefing] = useState<string | null>(null);
+  const [briefing, setBriefing] = useState<AiBriefing | null>(null);
   const [briefingLoading, setBriefingLoading] = useState(false);
   const [briefingError, setBriefingError] = useState<string | null>(null);
+
+  const [askQuestion, setAskQuestion] = useState("");
+  const [askResult, setAskResult] = useState<AskResult | null>(null);
+  const [askLoading, setAskLoading] = useState(false);
+  const [askError, setAskError] = useState<string | null>(null);
 
   const [zones, setZones] = useState<string[]>([]);
   const [resourceOptions, setResourceOptions] = useState<string[]>([]);
@@ -166,14 +173,34 @@ export function Dashboard() {
     setBriefingLoading(true);
     setBriefingError(null);
     try {
-      const result = await api.aiBriefing();
-      setBriefing(result.briefing);
+      setBriefing(await api.aiBriefing());
     } catch (err) {
       setBriefingError(err instanceof ApiError ? err.message : "Could not generate briefing.");
     } finally {
       setBriefingLoading(false);
     }
   };
+
+  const runAsk = async (e: FormEvent) => {
+    e.preventDefault();
+    const q = askQuestion.trim();
+    if (q.length < 3 || askLoading) return;
+    setAskLoading(true);
+    setAskError(null);
+    try {
+      setAskResult(await api.ask(q));
+    } catch (err) {
+      setAskError(err instanceof ApiError ? err.message : "Could not answer that.");
+    } finally {
+      setAskLoading(false);
+    }
+  };
+
+  const ASK_SAMPLES = [
+    "Which zone has the worst medical shortage?",
+    "How much water has been delivered so far?",
+    "Are deliveries keeping up with requests?",
+  ];
 
   const { totalUnmet, criticalZones, verifiedDeliveries } = stats;
   const zoneUrgency = toZoneUrgency(zoneGaps);
@@ -503,8 +530,8 @@ export function Dashboard() {
         <div className="panel panel-wide">
           <h2>AI Situation Briefing</h2>
           <p className="table-hint">
-            Sends the current zone gaps and response trend to Gemini and asks it to prioritize
-            which zones need urgent intervention first.
+            Gemini reads the current zone gaps and 30-day trend and returns a ranked action
+            list — each zone with a reason, a recommended move, and its confidence.
           </p>
           <button className="btn-briefing" onClick={generateBriefing} disabled={briefingLoading || loading}>
             {briefingLoading ? "Generating…" : briefing ? "Regenerate Briefing" : "Generate Briefing"}
@@ -515,7 +542,97 @@ export function Dashboard() {
               <SkeletonText lines={5} />
             </div>
           )}
-          {briefing && <div className="briefing-text">{briefing}</div>}
+          {briefing && (
+            <>
+              {briefing.briefing && <div className="briefing-text">{briefing.briefing}</div>}
+              {briefing.priorities.length > 0 && (
+                <ol className="priority-list">
+                  {briefing.priorities.map((p) => (
+                    <li key={p.rank} className="priority-card">
+                      <div className="priority-head">
+                        <span className="priority-rank">{p.rank}</span>
+                        <span className="priority-zone">{p.zone}</span>
+                        <span className={`urgency-badge urgency-${p.urgency}`}>
+                          {URGENCY_LABEL[p.urgency as UrgencyLevel] ?? p.urgency}
+                        </span>
+                        <span className={`confidence-chip confidence-${p.confidence}`}>
+                          {p.confidence} confidence
+                        </span>
+                      </div>
+                      <p className="priority-reason">{p.reason}</p>
+                      <p className="priority-action">
+                        <strong>Do:</strong> {p.recommended_action}
+                      </p>
+                      {p.key_resources.length > 0 && (
+                        <div className="priority-resources">
+                          {p.key_resources.map((r) => (
+                            <span key={r} className="resource-chip">
+                              {r}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="panel panel-wide">
+          <h2>Ask ReliefTrace</h2>
+          <p className="table-hint">
+            A question in plain English. Gemini decides which live Snowflake queries to run
+            (via function calling), then answers from the results — no made-up numbers.
+          </p>
+          <form className="ask-form" onSubmit={runAsk}>
+            <input
+              type="text"
+              value={askQuestion}
+              onChange={(e) => setAskQuestion(e.target.value)}
+              placeholder="e.g. Which zone has the worst medical shortage?"
+              maxLength={400}
+            />
+            <button type="submit" className="btn-briefing" disabled={askLoading || askQuestion.trim().length < 3}>
+              {askLoading ? "Thinking…" : "Ask"}
+            </button>
+          </form>
+          <div className="ask-samples">
+            {ASK_SAMPLES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                className="ask-sample"
+                onClick={() => setAskQuestion(s)}
+                disabled={askLoading}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+          {askError && <p className="upload-error">{askError}</p>}
+          {askLoading && !askResult && (
+            <div className="briefing-text">
+              <SkeletonText lines={2} />
+            </div>
+          )}
+          {askResult && (
+            <div className="ask-answer">
+              <p className="ask-question">“{askResult.question}”</p>
+              <div className="briefing-text">{askResult.answer}</div>
+              {askResult.tools_used.length > 0 && (
+                <div className="ask-trace">
+                  <span className="ask-trace-label">Queried:</span>
+                  {askResult.tools_used.map((t, i) => (
+                    <span key={`${t}-${i}`} className="tool-chip">
+                      {t.replace(/^get_/, "").replace(/_/g, " ")}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="panel panel-wide">

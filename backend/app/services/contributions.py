@@ -92,6 +92,7 @@ def create_contribution(payload: ContributionInput) -> ContributionResult:
         "zone_gaps",
         "resource_breakdown",
         "generate_briefing",
+        "answer_question",
     )
 
     return ContributionResult(
