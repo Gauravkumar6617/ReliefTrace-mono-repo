@@ -80,27 +80,40 @@ on the live numbers and told not to invent data.
 
 ```
 React + Vite (single page)
-        │  fetch (JSON, no auth)
+        │  fetch (JSON) + EventSource (live updates)
         ▼
 FastAPI  ──────────────► Snowflake      (requests, deliveries, analytics)
    │     ──────────────► Solana devnet  (memo tx per contribution)
    │     ──────────────► Gemini API     (situation briefing)
-   └──── Redis / in-process cache       (insight-query results)
+   └──── Redis  ─┬─────► insight-query cache (falls back to in-process)
+                 └─────► pub/sub backplane for the live SSE feed (multi-replica)
 ```
+
+The FastAPI app is split into layers: `app/core` (config, logging, cache,
+event bus), `app/db` (Snowflake connection pool), `app/services` (queries +
+business logic), `app/api/routes` (thin routers).
 
 ### Endpoints
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/insights/zone-gaps` | unmet need per zone + resource, with urgency |
-| `GET` | `/api/insights/response-trend` | requested vs. delivered per day |
-| `GET` | `/api/insights/resource-breakdown` | supply vs. demand per resource type |
-| `GET` | `/api/insights/ai-briefing` | Gemini-written situation briefing |
-| `GET` | `/api/deliveries/recent` | latest deliveries with verify links |
-| `GET` | `/api/zones`, `/api/resource-types` | form options |
-| `POST` | `/api/contribute` | write delivery → Solana memo → store signature |
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/dashboard` | — | all four insight payloads in one round trip (queries run concurrently) |
+| `GET` | `/api/insights/zone-gaps` | — | unmet need per zone + resource, with urgency |
+| `GET` | `/api/insights/response-trend` | — | requested vs. delivered per day |
+| `GET` | `/api/insights/resource-breakdown` | — | supply vs. demand per resource type |
+| `GET` | `/api/insights/ai-briefing` | `X-API-Key` | Gemini-written situation briefing |
+| `GET` | `/api/deliveries/recent` | — | latest deliveries with verify links |
+| `GET` | `/api/zones`, `/api/resource-types` | — | form options |
+| `GET` | `/api/stream` | — | Server-Sent Events; one `message` per new contribution |
+| `GET` | `/health` | — | liveness + current SSE client count |
+| `POST` | `/api/contribute` | `X-API-Key` | write delivery → Solana memo → store signature → broadcast |
 
-Interactive docs at `http://localhost:8000/docs` when the backend is running.
+`X-API-Key` is only enforced when the backend has `API_KEY` set; unset =
+auth disabled. Swagger (`/docs`, when the backend is running) shows the
+padlock and an **Authorize** button for the two protected routes.
+
+The contribution form also carries a **honeypot** field (`website`): hidden
+from real users, rejected server-side with `400` if a bot fills it.
 
 ---
 
@@ -112,11 +125,17 @@ snow-donation/
 ├── doppler.yaml                  Doppler project/config binding
 ├── backend/
 │   ├── app/                      the FastAPI application (importable package)
-│   │   ├── main.py               app + all routes
-│   │   ├── db.py                 pooled Snowflake connection
-│   │   ├── cache.py              Redis-backed cache (falls back to in-process)
-│   │   ├── solana_client.py      devnet keypair, airdrop, memo transactions
-│   │   └── schemas.py            request/response models + validation
+│   │   ├── main.py               app factory, middleware, lifespan (prewarm + event relay)
+│   │   ├── schemas.py            request/response models + validation
+│   │   ├── core/
+│   │   │   ├── config.py         one Settings object; loads .env once
+│   │   │   ├── logging.py        stdout + optional Logfire tracing
+│   │   │   ├── cache.py          Redis-backed cache (falls back to in-process)
+│   │   │   ├── events.py         SSE broadcaster + Redis pub/sub fan-out
+│   │   │   └── security.py       X-API-Key dependency (Swagger padlock)
+│   │   ├── db/pool.py            Snowflake connection pool
+│   │   ├── services/             insights, contributions, briefing, solana
+│   │   └── api/routes/           health, insights, contribute, briefing, stream
 │   ├── scripts/                  run-once utilities (python -m scripts.<name>)
 │   │   ├── generate_data.py      synthetic requests/deliveries → data/*.csv
 │   │   ├── load_to_snowflake.py  PUT + COPY INTO
@@ -126,9 +145,12 @@ snow-donation/
 │   └── keys/                     Snowflake key + Solana wallet (git-ignored)
 └── frontend/
     └── src/
-        ├── pages/Dashboard.tsx   the whole UI
+        ├── pages/Dashboard.tsx   the UI
+        ├── hooks/useDashboard.ts initial load + live (SSE) updates + derived stats
         ├── components/           charts, skeleton loaders, count-up
-        └── api.ts                typed fetch client
+        └── lib/
+            ├── api.ts            typed fetch client
+            └── liveEvents.ts     EventSource wrapper for /api/stream
 ```
 
 ---
@@ -157,7 +179,15 @@ doppler secrets set SNOWFLAKE_USER=you
 doppler secrets set SNOWFLAKE_PRIVATE_KEY_PATH=keys/snowflake_rsa_key.p8
 doppler secrets set GEMINI_API_KEY=AIza...
 doppler secrets set REDIS_URL='rediss://default:...@...upstash.io:6379'
+
+# optional: require an API key on POST /api/contribute and the AI briefing
+doppler secrets set API_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(32))')"
+doppler secrets set VITE_API_KEY="<same value as API_KEY>"
 ```
+
+Other optional knobs (see `backend/.env.example` for the full list):
+`SNOWFLAKE_POOL_SIZE` (default `3`), `EVENTS_CHANNEL` (default
+`relieftrace:events`).
 
 Everything then runs through `doppler run --`, which injects the variables for
 that one command:
@@ -173,6 +203,9 @@ dev` there picks up the same config (add the `VITE_*` variables to it as well).
 
 Insight-query results are cached so the dashboard doesn't re-run the same
 Snowflake queries on every load, and the cache survives backend restarts.
+Redis also carries the pub/sub messages behind the live `/api/stream` feed —
+needed only if you run more than one backend replica; a single process
+broadcasts in-memory without it.
 
 - **Upstash:** create a free Redis database at
   [upstash.com](https://upstash.com), then
@@ -199,7 +232,7 @@ doppler run -- python -m scripts.load_to_snowflake
 
 ```bash
 cd backend
-doppler run -- python -m app.solana_client   # prints the wallet address + tries an airdrop
+doppler run -- python -m app.services.solana   # prints the wallet address + tries an airdrop
 ```
 
 The public RPC faucet is aggressively rate-limited. If the airdrop fails, fund
@@ -230,10 +263,12 @@ and watch it get recorded and verified.
 
 ## Non-goals
 
-Deliberately not built, to keep the surface honest and small: authentication,
-user accounts, real payments, email sending, admin panels, multi-page routing,
-database replication/sharding, Docker, or any infrastructure beyond FastAPI,
-React, Snowflake, Solana devnet, Gemini, and an optional Redis cache.
+Deliberately not built, to keep the surface honest and small: user accounts,
+real payments, email sending, admin panels, multi-page routing, database
+replication/sharding, Docker, or any infrastructure beyond FastAPI, React,
+Snowflake, Solana devnet, Gemini, and Redis. Auth is limited to one optional
+shared API key on the two write/paid endpoints — there is no login or per-user
+identity.
 
 ## Known limitations
 
@@ -241,9 +276,10 @@ React, Snowflake, Solana devnet, Gemini, and an optional Redis cache.
   first-time funding sometimes needs the web faucet with a GitHub sign-in.
 - **Gemini key required for the briefing.** Without `GEMINI_API_KEY` that one
   endpoint returns 503; everything else works.
-- **Single-process caching model.** The cache and Snowflake connection are
-  sized for one backend process. Running multiple workers would want a real
-  connection pool and shared cache (Redis already covers the latter).
+- **Rate-limit state is per-process.** The Snowflake pool and the cache both
+  scale out (the cache and the SSE fan-out share Redis), but slowapi's
+  rate-limit counters live in process memory — behind multiple replicas each
+  gets its own allowance. Point slowapi at Redis to fix.
 - **Seed data is optional.** If you skip the Snowflake seed load, the need-side
   panels stay empty until requests exist — the delivery side is fully driven by
   the live form.

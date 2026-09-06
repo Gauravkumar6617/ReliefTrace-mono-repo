@@ -56,6 +56,10 @@ class ContributionInput(BaseModel):
     resource_type: ResourceType
     quantity: Annotated[float, Field(gt=0, le=1_000_000)]
     zone_name: Annotated[str, Field(min_length=1, max_length=80)]
+    # Honeypot: rendered off-screen and hidden from assistive tech, so a real
+    # user never fills it. A non-empty value means an automated form filler -
+    # the route rejects it. Default "" keeps it optional for humans.
+    website: str = ""
 
     @field_validator("donor_name", "zone_name")
     @classmethod

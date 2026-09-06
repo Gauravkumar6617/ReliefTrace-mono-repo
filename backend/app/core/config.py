@@ -52,6 +52,11 @@ class Settings:
     redis_url: str = os.getenv("REDIS_URL", "").strip()
     events_channel: str = os.getenv("EVENTS_CHANNEL", "relieftrace:events")
 
+    # --- API auth -------------------------------------------------------
+    # When set, the write path and the AI briefing require this value in the
+    # `X-API-Key` request header. Unset = auth disabled (local dev).
+    api_key: str | None = os.getenv("API_KEY") or None
+
     # --- Gemini --------------------------------------------------------
     gemini_api_key: str | None = os.getenv("GEMINI_API_KEY")
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")

@@ -477,3 +477,14 @@ th {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
 }
+
+/* --- honeypot: keep it out of view and out of the layout, but not
+   display:none / hidden (bots skip those) --------------------------------- */
+.hp-field {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}

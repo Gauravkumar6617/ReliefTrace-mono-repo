@@ -103,6 +103,7 @@ export function Dashboard() {
     resource_type: "",
     quantity: "",
     zone_name: "",
+    website: "", // honeypot
   });
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -147,6 +148,7 @@ export function Dashboard() {
         resource_type: form.resource_type,
         quantity: Number(form.quantity),
         zone_name: form.zone_name.trim(),
+        website: form.website,
       });
       setConfirmation(result);
       setForm((f) => ({ ...f, donor_name: "", donor_email: "", quantity: "" }));
@@ -205,6 +207,19 @@ export function Dashboard() {
           transaction. No account, no payment.
         </p>
         <form className="contribute-form" onSubmit={submitContribution}>
+          {/* Honeypot: hidden from real users, tempting to bots. If it comes
+              back filled, the backend rejects the submission. */}
+          <div className="hp-field" aria-hidden="true">
+            <label htmlFor="website">Website</label>
+            <input
+              id="website"
+              type="text"
+              tabIndex={-1}
+              autoComplete="off"
+              value={form.website}
+              onChange={(e) => setForm({ ...form, website: e.target.value })}
+            />
+          </div>
           <label>
             <span>Your name or organization</span>
             <input
