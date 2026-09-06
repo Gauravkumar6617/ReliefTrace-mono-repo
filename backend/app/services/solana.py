@@ -29,7 +29,7 @@ from solders.transaction import Transaction
 
 load_dotenv()
 
-KEYS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "keys"))
+KEYS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "keys"))
 WALLET_PATH = os.path.join(KEYS_DIR, "wallet.json")
 SEED_KEYPAIR_DOC = os.path.join(KEYS_DIR, "solana_donation_address.md")
 

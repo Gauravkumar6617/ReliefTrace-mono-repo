@@ -1,7 +1,7 @@
 // Fetch wrapper for ReliefTrace's read-only insights API. No auth, no
 // cookies - every route here is a public GET.
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+export const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 class ApiError extends Error {
   status: number;
@@ -81,6 +81,13 @@ export interface AiBriefing {
   generated_at: string;
 }
 
+export interface DashboardSnapshot {
+  zone_gaps: ZoneGap[];
+  resource_breakdown: ResourceBreakdown[];
+  response_trend: ResponseTrendPoint[];
+  recent_deliveries: RecentDelivery[];
+}
+
 export interface ContributionInput {
   donor_name: string;
   donor_email: string;
@@ -105,6 +112,8 @@ export interface ContributionResult {
 export { ApiError };
 
 export const api = {
+  dashboard: (deliveriesLimit = 25) =>
+    getJson<DashboardSnapshot>(`/api/dashboard?deliveries_limit=${deliveriesLimit}`),
   zoneGaps: () => getJson<ZoneGap[]>("/api/insights/zone-gaps"),
   responseTrend: () => getJson<ResponseTrendPoint[]>("/api/insights/response-trend"),
   resourceBreakdown: () => getJson<ResourceBreakdown[]>("/api/insights/resource-breakdown"),

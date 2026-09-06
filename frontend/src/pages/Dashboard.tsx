@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   Bar,
   BarChart,
@@ -17,12 +17,10 @@ import {
   api,
   ApiError,
   type ContributionResult,
-  type RecentDelivery,
-  type ResourceBreakdown,
-  type ResponseTrendPoint,
   type UrgencyLevel,
   type ZoneGap,
-} from "../api";
+} from "../lib/api";
+import { useDashboard } from "../hooks/useDashboard";
 import { CountUp } from "../components/CountUp";
 import {
   SkeletonChart,
@@ -81,12 +79,17 @@ function toZoneUrgency(gaps: ZoneGap[]): ZoneUrgencyRow[] {
 }
 
 export function Dashboard() {
-  const [zoneGaps, setZoneGaps] = useState<ZoneGap[]>([]);
-  const [resourceBreakdown, setResourceBreakdown] = useState<ResourceBreakdown[]>([]);
-  const [responseTrend, setResponseTrend] = useState<ResponseTrendPoint[]>([]);
-  const [recentDeliveries, setRecentDeliveries] = useState<RecentDelivery[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    zoneGaps,
+    resourceBreakdown,
+    responseTrend,
+    recentDeliveries,
+    loading,
+    error,
+    live,
+    stats,
+    reload: loadDashboard,
+  } = useDashboard();
 
   const [briefing, setBriefing] = useState<string | null>(null);
   const [briefingLoading, setBriefingLoading] = useState(false);
@@ -104,29 +107,6 @@ export function Dashboard() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<ContributionResult | null>(null);
-
-  const loadDashboard = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    Promise.all([
-      api.zoneGaps(),
-      api.resourceBreakdown(),
-      api.responseTrend(),
-      api.recentDeliveries(25),
-    ])
-      .then(([gaps, breakdown, trend, deliveries]) => {
-        setZoneGaps(gaps);
-        setResourceBreakdown(breakdown);
-        setResponseTrend(trend);
-        setRecentDeliveries(deliveries);
-      })
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    loadDashboard();
-  }, [loadDashboard]);
 
   useEffect(() => {
     Promise.all([api.zones(), api.resourceTypes()])
@@ -193,11 +173,7 @@ export function Dashboard() {
     }
   };
 
-  const totalUnmet = zoneGaps.reduce((sum, g) => sum + Math.max(0, g.unmet_need), 0);
-  const criticalZones = new Set(
-    zoneGaps.filter((g) => g.urgency_level === "critical").map((g) => g.zone_name),
-  ).size;
-  const verifiedDeliveries = recentDeliveries.filter((d) => d.solana_tx_sig).length;
+  const { totalUnmet, criticalZones, verifiedDeliveries } = stats;
   const zoneUrgency = toZoneUrgency(zoneGaps);
 
   return (
@@ -212,6 +188,10 @@ export function Dashboard() {
           </p>
         </div>
         <div className="header-actions">
+          <span className={`live-indicator live-${live}`} title={`Live updates: ${live}`}>
+            <span className="live-dot" />
+            {live === "open" ? "Live" : live === "connecting" ? "Connecting…" : "Offline"}
+          </span>
           <button className="btn-refresh" onClick={loadDashboard} disabled={loading}>
             {loading ? "Refreshing…" : "Refresh"}
           </button>
