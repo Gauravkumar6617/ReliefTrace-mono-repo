@@ -20,12 +20,15 @@ log = logging.getLogger("relieftrace.ask")
 
 _ASK_TTL = 300  # identical questions within 5 min reuse the answer
 
+_FALLBACK = "I couldn't find relevant data for that question."
+
 _SYSTEM = (
     "You are ReliefTrace's data assistant. Answer questions about disaster-relief "
     "resource needs and deliveries strictly from the tools provided - call whichever "
     "tools you need, then answer in 1-4 sentences with concrete zone names, resource "
-    "types and numbers. If the tools don't contain the answer, say so plainly. "
-    "Never invent data. All quantities are in generic 'units'."
+    "types and numbers. Never invent data. All quantities are in generic 'units'. "
+    "If the question is unrelated to relief needs or deliveries, or the tool results "
+    f"do not contain the answer, reply exactly: {_FALLBACK}"
 )
 
 # --- tool implementations (return compact JSON-friendly structures) ----------
@@ -131,6 +134,7 @@ def answer_question(question: str) -> AskResult:
     answer, tools_used = generate_with_tools(
         question, system=_SYSTEM, tools=_TOOLS, impls=_IMPLS
     )
+    answer = answer.strip() or _FALLBACK
     log.info("ask: answered using tools=%s", tools_used)
     return AskResult(
         question=question,

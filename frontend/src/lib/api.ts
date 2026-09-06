@@ -46,6 +46,12 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+async function getBlob(path: string): Promise<Blob> {
+  const res = await fetch(`${BASE_URL}${path}`, { headers: authHeaders() });
+  if (!res.ok) await parseError(res);
+  return res.blob();
+}
+
 export type UrgencyLevel = "low" | "medium" | "critical";
 
 export interface ZoneGap {
@@ -77,6 +83,7 @@ export interface RecentDelivery {
   zone_name: string;
   donor_org: string;
   donor_email: string | null;
+  cause_note: string | null;
   resource_type: string;
   quantity_sent: number;
   delivery_date: string;
@@ -114,8 +121,9 @@ export interface DashboardSnapshot {
 }
 
 export interface ContributionInput {
-  donor_name: string;
+  donor_org: string;
   donor_email: string;
+  cause_note?: string;
   resource_type: string;
   quantity: number;
   zone_name: string;
@@ -124,8 +132,9 @@ export interface ContributionInput {
 
 export interface ContributionResult {
   delivery_id: string;
-  donor_name: string;
+  donor_org: string;
   donor_email: string;
+  cause_note: string;
   resource_type: string;
   quantity: number;
   zone_name: string;
@@ -147,6 +156,7 @@ export const api = {
   recentDeliveries: (limit = 20) =>
     getJson<RecentDelivery[]>(`/api/deliveries/recent?limit=${limit}`),
   aiBriefing: () => getJson<AiBriefing>("/api/insights/ai-briefing"),
+  briefingPdf: () => getBlob("/api/insights/ai-briefing.pdf"),
   ask: (question: string) => postJson<AskResult>("/api/ask", { question }),
   zones: () => getJson<string[]>("/api/zones"),
   resourceTypes: () => getJson<string[]>("/api/resource-types"),

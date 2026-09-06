@@ -46,6 +46,7 @@ TABLES = {
             "REQUEST_ID",
             "ZONE_NAME",
             "DONOR_ORG",
+            "CAUSE_NOTE",
             "RESOURCE_TYPE",
             "QUANTITY_SENT",
             "DELIVERY_DATE",

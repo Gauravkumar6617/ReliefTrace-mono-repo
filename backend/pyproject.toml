@@ -22,6 +22,7 @@ dependencies = [
     "fastapi-cli>=0.0.32",
     "fastapi-cloud-cli>=0.25.0",
     "logfire[fastapi,httpx]>=5.0.0",
+    "reportlab>=4.0",
 ]
 
 [tool.uv.sources]
