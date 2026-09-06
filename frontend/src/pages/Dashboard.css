@@ -22,10 +22,11 @@
   max-width: none;
   margin: 0;
   flex: 1;
-  padding: 2rem clamp(1rem, 4vw, 3.5rem) 4rem;
+  padding: 2rem clamp(0.9rem, 4vw, 3.5rem) 4rem;
   font-family: "Inter", system-ui, -apple-system, sans-serif;
   background: var(--bg);
   color: var(--text);
+  overflow-x: hidden;
 }
 
 .dashboard * {
@@ -106,7 +107,7 @@
 
 .stat-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: 1rem;
   margin-bottom: 1.5rem;
 }
@@ -145,7 +146,7 @@
 
 .panel-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
   gap: 1.25rem;
 }
 
@@ -177,12 +178,19 @@
 .table-wrap {
   max-height: 340px;
   overflow-y: auto;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.85rem;
+}
+
+/* data tables scroll sideways on narrow screens instead of crushing */
+.table-wrap table {
+  min-width: 460px;
 }
 
 th,
@@ -267,6 +275,7 @@ th {
 
 .briefing-text {
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   line-height: 1.6;
   font-size: 0.9rem;
   color: var(--text);
@@ -287,7 +296,7 @@ th {
 
 .contribute-form {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
   gap: 1rem;
   align-items: end;
 }
@@ -669,3 +678,85 @@ table.sortable th:hover { color: var(--brand, #2f6f62); }
   font-style: italic;
 }
 .field-wide { grid-column: 1 / -1; }
+
+/* =====================================================================
+   Responsive
+   ===================================================================== */
+
+.donor-email,
+.donor-note,
+.tool-chip,
+.ask-question {
+  overflow-wrap: anywhere;
+}
+
+/* tablets / small laptops */
+@media (max-width: 768px) {
+  .dashboard {
+    padding: 1.25rem clamp(0.9rem, 4vw, 2rem) 3rem;
+  }
+  .dashboard-header h1 {
+    font-size: 1.4rem;
+  }
+  .panel {
+    padding: 1rem;
+  }
+  .stat-value {
+    font-size: 1.5rem;
+  }
+}
+
+/* phones */
+@media (max-width: 520px) {
+  .dashboard-header {
+    padding-bottom: 1rem;
+    margin-bottom: 1.1rem;
+  }
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .contribute-form {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+  .field-wide {
+    grid-column: auto;
+  }
+  .btn-submit,
+  .briefing-actions,
+  .briefing-actions .btn-briefing,
+  .ask-form,
+  .ask-form input,
+  .ask-form .btn-briefing {
+    width: 100%;
+  }
+  .ask-form {
+    flex-direction: column;
+  }
+  .table-hint {
+    font-size: 0.75rem;
+  }
+  .table-wrap {
+    max-height: 60vh;
+  }
+  /* recharts containers get cramped below this; give them room to breathe */
+  .panel .recharts-responsive-container {
+    min-height: 240px;
+  }
+}
+
+/* very small phones */
+@media (max-width: 360px) {
+  .dashboard {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+  .dashboard-header h1 {
+    font-size: 1.25rem;
+  }
+  .stat-card,
+  .panel {
+    padding: 0.85rem;
+  }
+}
