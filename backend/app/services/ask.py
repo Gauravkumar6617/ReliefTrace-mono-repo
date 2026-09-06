@@ -11,6 +11,8 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
+from fastapi import HTTPException, status
+
 from app.core.cache import cached
 from app.schemas import AskResult
 from app.services import insights
@@ -150,17 +152,39 @@ _TOOLS = [
 ]
 
 
+class AskUnavailable(RuntimeError):
+    """Gemini failed (quota, timeout, bad response). Raised so the cache does
+    not store the failure and the route can return a friendly 200 fallback."""
+
+
 @cached(ttl=_ASK_TTL)
 def answer_question(question: str) -> AskResult:
     log.info("ask: %r", question[:120])
-    answer, tools_used = generate_with_tools(
-        question, system=_SYSTEM, tools=_TOOLS, impls=_IMPLS
-    )
+    try:
+        answer, tools_used = generate_with_tools(
+            question, system=_SYSTEM, tools=_TOOLS, impls=_IMPLS
+        )
+    except HTTPException as exc:
+        # 503 = no API key -> let it through as-is; anything else -> fallback
+        if exc.status_code == status.HTTP_503_SERVICE_UNAVAILABLE:
+            raise
+        log.warning("ask: gemini failed (%s); serving fallback", exc.detail)
+        raise AskUnavailable(str(exc.detail)) from exc
+
     answer = answer.strip() or _FALLBACK
     log.info("ask: answered using tools=%s", tools_used)
     return AskResult(
         question=question,
         answer=answer,
         tools_used=tools_used,
+        generated_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+def fallback_result(question: str) -> AskResult:
+    return AskResult(
+        question=question,
+        answer=_FALLBACK,
+        tools_used=[],
         generated_at=datetime.now(timezone.utc).isoformat(),
     )

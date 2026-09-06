@@ -6,7 +6,7 @@ from fastapi.concurrency import run_in_threadpool
 from app.api.deps import limiter
 from app.core.security import require_api_key
 from app.schemas import AskInput, AskResult
-from app.services.ask import answer_question
+from app.services.ask import AskUnavailable, answer_question, fallback_result
 
 router = APIRouter(prefix="/api", tags=["ask"])
 
@@ -15,5 +15,9 @@ router = APIRouter(prefix="/api", tags=["ask"])
 @limiter.limit("30/hour")
 async def ask(request: Request, payload: AskInput):
     """Natural-language question answered by Gemini via function calling over
-    the live Snowflake data."""
-    return await run_in_threadpool(answer_question, payload.question)
+    the live Snowflake data. Degrades to a plain fallback answer (200) if
+    Gemini is unavailable, rather than surfacing a 502."""
+    try:
+        return await run_in_threadpool(answer_question, payload.question)
+    except AskUnavailable:
+        return fallback_result(payload.question)

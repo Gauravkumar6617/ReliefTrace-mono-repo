@@ -25,8 +25,10 @@ from app.core.config import settings
 
 log = logging.getLogger("relieftrace.gemini")
 
-_TIMEOUT = 30.0
-_MAX_TOOL_TURNS = 6
+# Kept well under a typical hosting gateway timeout: /api/ask makes up to
+# _MAX_TOOL_TURNS sequential Gemini calls, so total ~= turns * _TIMEOUT.
+_TIMEOUT = 18.0
+_MAX_TOOL_TURNS = 3
 
 
 def _endpoint() -> str:
