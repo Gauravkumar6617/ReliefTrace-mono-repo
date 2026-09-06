@@ -41,7 +41,9 @@ async def contribute(request: Request, payload: ContributionInput, background_ta
             "delivery": {
                 "delivery_id": result.delivery_id,
                 "zone_name": result.zone_name,
-                "donor_org": result.donor_name,
+                "donor_org": result.donor_org,
+                "donor_email": None,
+                "cause_note": result.cause_note or None,
                 "resource_type": result.resource_type,
                 "quantity_sent": result.quantity,
                 "delivery_date": result.delivery_date.isoformat(),

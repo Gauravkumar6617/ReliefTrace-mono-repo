@@ -28,30 +28,42 @@ def _build_message(result: ContributionResult) -> EmailMessage:
     msg = EmailMessage()
     msg["Subject"] = f"ReliefTrace: {result.resource_type} for {result.zone_name} recorded"
     msg["From"] = settings.smtp_from
-    msg["To"] = formataddr((result.donor_name, result.donor_email))
+    # greet with the donor org/name only - never the cause note
+    greeting = result.donor_org or "there"
+    msg["To"] = formataddr((result.donor_org, result.donor_email))
 
     qty = f"{result.quantity:g}"
+    note_line = f"  Cause/note: {result.cause_note}\n" if result.cause_note else ""
     text = (
-        f"Hi {result.donor_name},\n\n"
+        f"Hi {greeting},\n\n"
         f"Your contribution has been recorded and anchored on the Solana devnet.\n\n"
         f"  Resource:   {qty} {result.resource_type}\n"
         f"  Zone:       {result.zone_name}\n"
+        f"{note_line}"
         f"  Date:       {result.delivery_date.isoformat()}\n"
         f"  Delivery ID:{result.delivery_id}\n"
         f"  On-chain:   {result.solana_tx_sig}\n\n"
         f"Verify it yourself on Solana Explorer:\n{result.explorer_url}\n\n"
+        f"A current situation briefing is attached as a PDF.\n\n"
         f"Thank you.\n— ReliefTrace\n"
     )
     msg.set_content(text)
 
+    note_row = (
+        f'<tr><td style="padding:4px 12px 4px 0;color:#6b6459">Cause / note</td>'
+        f"<td>{result.cause_note}</td></tr>"
+        if result.cause_note
+        else ""
+    )
     msg.add_alternative(
         f"""\
 <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#2f2a24;max-width:520px">
-  <p>Hi {result.donor_name},</p>
+  <p>Hi {greeting},</p>
   <p>Your contribution has been recorded and <strong>anchored on the Solana devnet</strong>.</p>
   <table style="border-collapse:collapse;font-size:14px">
     <tr><td style="padding:4px 12px 4px 0;color:#6b6459">Resource</td><td><strong>{qty} {result.resource_type}</strong></td></tr>
     <tr><td style="padding:4px 12px 4px 0;color:#6b6459">Zone</td><td>{result.zone_name}</td></tr>
+    {note_row}
     <tr><td style="padding:4px 12px 4px 0;color:#6b6459">Date</td><td>{result.delivery_date.isoformat()}</td></tr>
     <tr><td style="padding:4px 12px 4px 0;color:#6b6459">Delivery ID</td><td style="font-family:ui-monospace,Menlo,monospace">{result.delivery_id}</td></tr>
   </table>
@@ -62,11 +74,26 @@ def _build_message(result: ContributionResult) -> EmailMessage:
     </a>
   </p>
   <p style="color:#6b6459;font-size:13px">Transaction: {result.solana_tx_sig}</p>
+  <p style="color:#6b6459;font-size:13px">A current situation briefing is attached as a PDF.</p>
   <p>Thank you.<br/>&mdash; ReliefTrace</p>
 </div>
 """,
         subtype="html",
     )
+
+    # attach the situation briefing PDF - best effort, never fatal
+    try:
+        from app.services.pdf import build_briefing_pdf
+
+        msg.add_attachment(
+            build_briefing_pdf(),
+            maintype="application",
+            subtype="pdf",
+            filename="relieftrace-briefing.pdf",
+        )
+    except Exception as exc:  # noqa: BLE001 - e.g. no GEMINI_API_KEY; send without it
+        log.info("email: skipping PDF attachment for %s: %s", result.delivery_id, exc)
+
     return msg
 
 

@@ -39,6 +39,7 @@ class RecentDelivery(BaseModel):
     zone_name: str
     donor_org: str
     donor_email: str | None = None
+    cause_note: str | None = None
     resource_type: str
     quantity_sent: float
     delivery_date: date
@@ -81,8 +82,12 @@ class AskResult(BaseModel):
 
 
 class ContributionInput(BaseModel):
-    donor_name: Annotated[str, Field(min_length=1, max_length=80)]
+    # who is contributing - an org or a person's name, nothing else
+    donor_org: Annotated[str, Field(min_length=1, max_length=80)]
     donor_email: EmailStr
+    # optional free text for context, e.g. "assam flood relief drive" or
+    # "delivered via local Rotary chapter". Never the org name.
+    cause_note: Annotated[str, Field(max_length=140)] = ""
     resource_type: ResourceType
     quantity: Annotated[float, Field(gt=0, le=1_000_000)]
     zone_name: Annotated[str, Field(min_length=1, max_length=80)]
@@ -91,7 +96,7 @@ class ContributionInput(BaseModel):
     # the route rejects it. Default "" keeps it optional for humans.
     website: str = ""
 
-    @field_validator("donor_name", "zone_name")
+    @field_validator("donor_org", "zone_name")
     @classmethod
     def _strip_and_check(cls, v: str) -> str:
         v = " ".join(v.split())  # collapse whitespace, trim
@@ -99,11 +104,17 @@ class ContributionInput(BaseModel):
             raise ValueError("must not be blank")
         return v
 
+    @field_validator("cause_note")
+    @classmethod
+    def _clean_note(cls, v: str) -> str:
+        return " ".join(v.split())
+
 
 class ContributionResult(BaseModel):
     delivery_id: str
-    donor_name: str
+    donor_org: str
     donor_email: str
+    cause_note: str = ""
     resource_type: str
     quantity: float
     zone_name: str

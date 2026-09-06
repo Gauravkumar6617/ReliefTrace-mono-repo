@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS RELIEF_DELIVERIES (
     ZONE_NAME      STRING NOT NULL,
     DONOR_ORG      STRING NOT NULL,
     DONOR_EMAIL    STRING,          -- collected from the public form; never sent anywhere
+    CAUSE_NOTE     STRING,          -- optional free text, e.g. "assam flood relief drive"
     RESOURCE_TYPE  STRING NOT NULL,
     QUANTITY_SENT  NUMBER NOT NULL,
     DELIVERY_DATE  DATE NOT NULL,

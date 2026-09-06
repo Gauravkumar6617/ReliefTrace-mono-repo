@@ -596,3 +596,76 @@ th {
   font-size: 0.85rem;
   color: var(--axis, #6b6459);
 }
+
+/* --- combobox (zone field) ------------------------------------------ */
+.combobox { position: relative; }
+.combobox > input { width: 100%; }
+.combobox-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--panel, #fff);
+  border: 1px solid var(--border, #d9d4c9);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+.combobox-option {
+  padding: 0.4rem 0.55rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.combobox-option.is-active { background: var(--chip-bg, #ece7db); }
+
+/* --- Zone Resource Gaps: filters + sortable headers ----------------- */
+.gap-filters {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin: 0.25rem 0 0.75rem;
+}
+.gap-filter {
+  font-size: 0.8rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border, #d9d4c9);
+  background: transparent;
+  color: var(--axis, #6b6459);
+  cursor: pointer;
+}
+.gap-filter.is-active {
+  background: #2f2a24;
+  color: #fff;
+  border-color: #2f2a24;
+}
+table.sortable th {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+table.sortable th:hover { color: var(--brand, #2f6f62); }
+
+/* --- briefing actions row ------------------------------------------ */
+.briefing-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.btn-briefing.btn-secondary {
+  background: transparent;
+  color: var(--brand, #2f6f62);
+  border: 1px solid currentColor;
+}
+
+/* --- recent deliveries donor cell -------------------------------- */
+.donor-org { display: block; }
+.donor-note {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--axis, #6b6459);
+  font-style: italic;
+}
+.field-wide { grid-column: 1 / -1; }

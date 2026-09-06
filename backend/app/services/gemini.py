@@ -141,7 +141,10 @@ def generate_with_tools(
             )
         contents.append({"role": "user", "parts": response_parts})
 
-    raise HTTPException(
-        status.HTTP_502_BAD_GATEWAY,
-        "Gemini kept calling tools without producing an answer",
+    # Tool budget exhausted - make one last call with no tools so the model is
+    # forced to answer in text rather than loop (or us raising a 502).
+    log.warning("gemini: tool budget exhausted after %d turns; forcing a text answer", _MAX_TOOL_TURNS)
+    final = _post(
+        {"system_instruction": {"parts": [{"text": system}]}, "contents": contents}
     )
+    return _text(final), called

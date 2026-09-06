@@ -21,24 +21,25 @@ log = logging.getLogger("relieftrace.contribute")
 
 _INSERT = """
     INSERT INTO RELIEF_DELIVERIES
-        (DELIVERY_ID, REQUEST_ID, ZONE_NAME, DONOR_ORG, DONOR_EMAIL, RESOURCE_TYPE,
-         QUANTITY_SENT, DELIVERY_DATE, SOLANA_TX_SIG, SOURCE)
+        (DELIVERY_ID, REQUEST_ID, ZONE_NAME, DONOR_ORG, DONOR_EMAIL, CAUSE_NOTE,
+         RESOURCE_TYPE, QUANTITY_SENT, DELIVERY_DATE, SOLANA_TX_SIG, SOURCE)
     VALUES
-        (%(id)s, NULL, %(zone)s, %(donor)s, %(email)s, %(resource)s,
-         %(qty)s, %(day)s, %(sig)s, 'public')
+        (%(id)s, NULL, %(zone)s, %(org)s, %(email)s, %(note)s,
+         %(resource)s, %(qty)s, %(day)s, %(sig)s, 'public')
 """
 
 
 def create_contribution(payload: ContributionInput) -> ContributionResult:
-    donor = payload.donor_name.strip()
+    org = payload.donor_org.strip()
     email = str(payload.donor_email).strip()
+    note = payload.cause_note.strip()
     zone = payload.zone_name.strip()
     delivery_id = str(uuid.uuid4())
     today = date.today()
 
     log.info(
         "contribute: %s %s -> %s by %s (delivery=%s)",
-        payload.quantity, payload.resource_type, zone, donor, delivery_id,
+        payload.quantity, payload.resource_type, zone, org, delivery_id,
     )
 
     # 1. Anchor on-chain first - if the memo tx fails we don't want a delivery
@@ -47,7 +48,7 @@ def create_contribution(payload: ContributionInput) -> ContributionResult:
     try:
         ensure_funded()
         tx_sig = send_memo(
-            build_memo(donor=donor, resource=payload.resource_type, zone=zone, quantity=payload.quantity)
+            build_memo(donor=org, resource=payload.resource_type, zone=zone, quantity=payload.quantity)
         )
         log.info("contribute: on-chain ok delivery=%s sig=%s", delivery_id, tx_sig)
     except Exception as exc:
@@ -65,8 +66,9 @@ def create_contribution(payload: ContributionInput) -> ContributionResult:
                 {
                     "id": delivery_id,
                     "zone": zone,
-                    "donor": donor,
+                    "org": org,
                     "email": email,
+                    "note": note or None,
                     "resource": payload.resource_type,
                     "qty": payload.quantity,
                     "day": today.isoformat(),
@@ -97,8 +99,9 @@ def create_contribution(payload: ContributionInput) -> ContributionResult:
 
     return ContributionResult(
         delivery_id=delivery_id,
-        donor_name=donor,
+        donor_org=org,
         donor_email=email,
+        cause_note=note,
         resource_type=payload.resource_type,
         quantity=payload.quantity,
         zone_name=zone,

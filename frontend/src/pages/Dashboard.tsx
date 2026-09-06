@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   Bar,
   BarChart,
@@ -23,6 +23,7 @@ import {
   type ZoneGap,
 } from "../lib/api";
 import { useDashboard } from "../hooks/useDashboard";
+import { Combobox } from "../components/Combobox";
 import { CountUp } from "../components/CountUp";
 import {
   SkeletonChart,
@@ -105,13 +106,15 @@ export function Dashboard() {
   const [zones, setZones] = useState<string[]>([]);
   const [resourceOptions, setResourceOptions] = useState<string[]>([]);
   const [form, setForm] = useState({
-    donor_name: "",
+    donor_org: "",
     donor_email: "",
+    cause_note: "",
     resource_type: "",
     quantity: "",
     zone_name: "",
     website: "", // honeypot
   });
+  const [pdfLoading, setPdfLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<ContributionResult | null>(null);
@@ -135,7 +138,7 @@ export function Dashboard() {
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.donor_email.trim());
 
   const canSubmit =
-    form.donor_name.trim() !== "" &&
+    form.donor_org.trim() !== "" &&
     emailValid &&
     form.resource_type !== "" &&
     form.zone_name.trim() !== "" &&
@@ -150,15 +153,16 @@ export function Dashboard() {
     setConfirmation(null);
     try {
       const result = await api.contribute({
-        donor_name: form.donor_name.trim(),
+        donor_org: form.donor_org.trim(),
         donor_email: form.donor_email.trim(),
+        cause_note: form.cause_note.trim(),
         resource_type: form.resource_type,
         quantity: Number(form.quantity),
         zone_name: form.zone_name.trim(),
         website: form.website,
       });
       setConfirmation(result);
-      setForm((f) => ({ ...f, donor_name: "", donor_email: "", quantity: "" }));
+      setForm((f) => ({ ...f, donor_org: "", donor_email: "", cause_note: "", quantity: "" }));
       loadDashboard();
     } catch (err) {
       setSubmitError(
@@ -178,6 +182,26 @@ export function Dashboard() {
       setBriefingError(err instanceof ApiError ? err.message : "Could not generate briefing.");
     } finally {
       setBriefingLoading(false);
+    }
+  };
+
+  const downloadPdf = async () => {
+    setPdfLoading(true);
+    setBriefingError(null);
+    try {
+      const blob = await api.briefingPdf();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "relieftrace-briefing.pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setBriefingError(err instanceof ApiError ? err.message : "Could not build the PDF.");
+    } finally {
+      setPdfLoading(false);
     }
   };
 
@@ -204,6 +228,57 @@ export function Dashboard() {
 
   const { totalUnmet, criticalZones, verifiedDeliveries } = stats;
   const zoneUrgency = toZoneUrgency(zoneGaps);
+
+  // --- Zone Resource Gaps: client-side urgency filter + column sort ---------
+  type GapSortKey =
+    | "zone_name"
+    | "resource_type"
+    | "quantity_needed"
+    | "quantity_fulfilled"
+    | "unmet_need"
+    | "urgency_level";
+  const [gapUrgency, setGapUrgency] = useState<"all" | UrgencyLevel>("all");
+  const [gapSort, setGapSort] = useState<{ key: GapSortKey; dir: "asc" | "desc" }>({
+    key: "unmet_need",
+    dir: "desc",
+  });
+
+  const toggleGapSort = (key: GapSortKey) =>
+    setGapSort((s) =>
+      s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" },
+    );
+
+  const urgencyCounts = useMemo(() => {
+    const c = { all: zoneGaps.length, critical: 0, medium: 0, low: 0 };
+    for (const g of zoneGaps) c[g.urgency_level] += 1;
+    return c;
+  }, [zoneGaps]);
+
+  const visibleGaps = useMemo(() => {
+    const rows = zoneGaps.filter((g) => gapUrgency === "all" || g.urgency_level === gapUrgency);
+    const { key, dir } = gapSort;
+    const mul = dir === "asc" ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      let av: number | string;
+      let bv: number | string;
+      if (key === "zone_name" || key === "resource_type") {
+        av = a[key];
+        bv = b[key];
+      } else if (key === "urgency_level") {
+        av = URGENCY_RANK[a.urgency_level];
+        bv = URGENCY_RANK[b.urgency_level];
+      } else {
+        av = a[key];
+        bv = b[key];
+      }
+      if (av < bv) return -1 * mul;
+      if (av > bv) return 1 * mul;
+      return 0;
+    });
+  }, [zoneGaps, gapUrgency, gapSort]);
+
+  const sortArrow = (key: GapSortKey) =>
+    gapSort.key === key ? (gapSort.dir === "asc" ? " ▲" : " ▼") : "";
 
   return (
     <div className="dashboard">
@@ -248,11 +323,11 @@ export function Dashboard() {
             />
           </div>
           <label>
-            <span>Your name or organization</span>
+            <span>Organization or name</span>
             <input
               type="text"
-              value={form.donor_name}
-              onChange={(e) => setForm({ ...form, donor_name: e.target.value })}
+              value={form.donor_org}
+              onChange={(e) => setForm({ ...form, donor_org: e.target.value })}
               placeholder="e.g. Riverside Mutual Aid"
               maxLength={80}
               required
@@ -267,6 +342,16 @@ export function Dashboard() {
               placeholder="you@example.org"
               maxLength={120}
               required
+            />
+          </label>
+          <label className="field-wide">
+            <span>Note (optional)</span>
+            <input
+              type="text"
+              value={form.cause_note}
+              onChange={(e) => setForm({ ...form, cause_note: e.target.value })}
+              placeholder="e.g. Assam flood relief drive — via local Rotary chapter"
+              maxLength={140}
             />
           </label>
           <label>
@@ -298,20 +383,14 @@ export function Dashboard() {
           </label>
           <label>
             <span>Zone</span>
-            <input
-              type="text"
-              list="zone-options"
+            <Combobox
               value={form.zone_name}
-              onChange={(e) => setForm({ ...form, zone_name: e.target.value })}
-              placeholder="e.g. Riverside District"
+              onChange={(v) => setForm((f) => ({ ...f, zone_name: v }))}
+              options={zones}
+              placeholder="Type to filter zones…"
               maxLength={80}
               required
             />
-            <datalist id="zone-options">
-              {zones.map((z) => (
-                <option key={z} value={z} />
-              ))}
-            </datalist>
           </label>
           <button type="submit" className="btn-submit" disabled={!canSubmit}>
             {submitting ? "Recording on-chain…" : "Submit contribution"}
@@ -325,7 +404,8 @@ export function Dashboard() {
             <p className="confirmation-headline">Recorded and verified</p>
             <p className="confirmation-detail">
               {number(confirmation.quantity)} {confirmation.resource_type} for{" "}
-              {confirmation.zone_name}, from {confirmation.donor_name} ({confirmation.donor_email}).
+              {confirmation.zone_name}, from {confirmation.donor_org} ({confirmation.donor_email}).
+              {confirmation.cause_note && ` — ${confirmation.cause_note}`}
             </p>
             <a
               className="verify-link"
@@ -492,27 +572,50 @@ export function Dashboard() {
         <div className="panel panel-wide">
           <h2>Zone Resource Gaps</h2>
           <p className="table-hint">
-            Unmet need = requested minus fulfilled, per zone and resource. Sorted worst-first.
+            Unmet need = requested minus fulfilled, per zone and resource. Filter by urgency,
+            click a column to sort.
           </p>
+          {!loading && zoneGaps.length > 0 && (
+            <div className="gap-filters">
+              {(["all", "critical", "medium", "low"] as const).map((u) => (
+                <button
+                  key={u}
+                  type="button"
+                  className={`gap-filter${gapUrgency === u ? " is-active" : ""}`}
+                  onClick={() => setGapUrgency(u)}
+                >
+                  {u === "all" ? "All" : URGENCY_LABEL[u]} ({urgencyCounts[u]})
+                </button>
+              ))}
+            </div>
+          )}
           <div className="table-wrap">
             {loading ? (
               <SkeletonTable rows={8} cols={6} />
             ) : zoneGaps.length === 0 ? (
               <EmptyState />
             ) : (
-              <table>
+              <table className="sortable">
                 <thead>
                   <tr>
-                    <th>Zone</th>
-                    <th>Resource</th>
-                    <th>Needed</th>
-                    <th>Fulfilled</th>
-                    <th>Unmet</th>
-                    <th>Urgency</th>
+                    <th onClick={() => toggleGapSort("zone_name")}>Zone{sortArrow("zone_name")}</th>
+                    <th onClick={() => toggleGapSort("resource_type")}>
+                      Resource{sortArrow("resource_type")}
+                    </th>
+                    <th onClick={() => toggleGapSort("quantity_needed")}>
+                      Needed{sortArrow("quantity_needed")}
+                    </th>
+                    <th onClick={() => toggleGapSort("quantity_fulfilled")}>
+                      Fulfilled{sortArrow("quantity_fulfilled")}
+                    </th>
+                    <th onClick={() => toggleGapSort("unmet_need")}>Unmet{sortArrow("unmet_need")}</th>
+                    <th onClick={() => toggleGapSort("urgency_level")}>
+                      Urgency{sortArrow("urgency_level")}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {zoneGaps.map((g) => (
+                  {visibleGaps.map((g) => (
                     <tr key={`${g.zone_name}-${g.resource_type}`}>
                       <td>{g.zone_name}</td>
                       <td>{g.resource_type}</td>
@@ -526,6 +629,13 @@ export function Dashboard() {
                       </td>
                     </tr>
                   ))}
+                  {visibleGaps.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="empty-state">
+                        No {gapUrgency} gaps.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             )}
@@ -538,9 +648,22 @@ export function Dashboard() {
             Gemini reads the current zone gaps and 30-day trend and returns a ranked action
             list — each zone with a reason, a recommended move, and its confidence.
           </p>
-          <button className="btn-briefing" onClick={generateBriefing} disabled={briefingLoading || loading}>
-            {briefingLoading ? "Generating…" : briefing ? "Regenerate Briefing" : "Generate Briefing"}
-          </button>
+          <div className="briefing-actions">
+            <button
+              className="btn-briefing"
+              onClick={generateBriefing}
+              disabled={briefingLoading || loading}
+            >
+              {briefingLoading ? "Generating…" : briefing ? "Regenerate Briefing" : "Generate Briefing"}
+            </button>
+            <button
+              className="btn-briefing btn-secondary"
+              onClick={downloadPdf}
+              disabled={pdfLoading || loading}
+            >
+              {pdfLoading ? "Preparing PDF…" : "Download as PDF"}
+            </button>
+          </div>
           {briefingError && <p className="upload-error">{briefingError}</p>}
           {briefingLoading && !briefing && (
             <div className="briefing-text">
@@ -668,8 +791,9 @@ export function Dashboard() {
                     <tr key={d.delivery_id}>
                       <td>{d.zone_name}</td>
                       <td>
-                        {d.donor_org}
+                        <span className="donor-org">{d.donor_org}</span>
                         {d.donor_email && <span className="donor-email">{d.donor_email}</span>}
+                        {d.cause_note && <span className="donor-note">{d.cause_note}</span>}
                       </td>
                       <td>{d.resource_type}</td>
                       <td>{number(d.quantity_sent)}</td>

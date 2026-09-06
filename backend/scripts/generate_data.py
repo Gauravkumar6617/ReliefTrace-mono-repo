@@ -129,6 +129,7 @@ def main():
                 "REQUEST_ID": req["REQUEST_ID"],
                 "ZONE_NAME": req["ZONE_NAME"],
                 "DONOR_ORG": random.choice(DONOR_ORGS),
+                "CAUSE_NOTE": "",  # seed rows carry no free-text note
                 "RESOURCE_TYPE": req["RESOURCE_TYPE"],
                 "QUANTITY_SENT": quantity_sent,
                 "DELIVERY_DATE": delivery_date.strftime("%Y-%m-%d"),
