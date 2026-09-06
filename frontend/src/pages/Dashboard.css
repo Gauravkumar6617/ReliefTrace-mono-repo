@@ -438,3 +438,42 @@ th {
   border: 1px dashed var(--border);
   border-radius: 8px;
 }
+
+/* --- live SSE indicator ------------------------------------------------ */
+.live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border, #d9d4c9);
+  color: var(--axis, #6b6459);
+  user-select: none;
+}
+.live-indicator .live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.live-indicator.live-open {
+  color: #2f6f62;
+  border-color: #b6d8cf;
+}
+.live-indicator.live-open .live-dot {
+  animation: live-pulse 1.8s ease-in-out infinite;
+}
+.live-indicator.live-connecting {
+  color: #b9832a;
+  border-color: #e6d3ac;
+}
+.live-indicator.live-closed {
+  color: #9c2b26;
+  border-color: #e6c2c0;
+}
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}

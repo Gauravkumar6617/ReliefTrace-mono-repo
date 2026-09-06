@@ -3,47 +3,43 @@ Cache for the read-only insight endpoints.
 
 Two-tier and best-effort:
   - if REDIS_URL is set and reachable, results are cached there (survives
-    backend restarts - the main win during development, where the warehouse
-    goes cold between runs);
+    backend restarts - the main win on a host that recycles processes or
+    scales to zero, where the warehouse goes cold between runs);
   - otherwise, and whenever Redis errors mid-request, it falls back to a
     plain in-process dict with per-key TTL.
 
-The dashboard fires four queries per load and the underlying data changes
-slowly, so a short TTL turns a multi-second load into an instant one.
-`invalidate()` is called after a contribution so the next load reflects it.
+The dashboard's queries change slowly, so a short TTL turns a multi-second
+load into an instant one. `invalidate()` is called after a contribution so
+the next load reflects it.
 """
 
 import logging
-import os
 import pickle
 import threading
 import time
 from functools import wraps
 
-from dotenv import load_dotenv
-
-load_dotenv()  # cache.py is imported before db.py, so load .env here too
+from app.core.config import settings
 
 log = logging.getLogger("relieftrace.cache")
 
 DEFAULT_TTL = 60.0
-_NS = "relieftrace:"
+_NS = "relieftrace:cache:"
 
 _mem: dict[str, tuple[float, object]] = {}  # key -> (expires_at_monotonic, value)
 _lock = threading.Lock()
 
 _redis = None
 _redis_label = "in-process dict"
-_REDIS_URL = os.getenv("REDIS_URL", "").strip()
-if _REDIS_URL:
+if settings.redis_url:
     try:
         import redis as _redis_lib
 
         _redis = _redis_lib.from_url(
-            _REDIS_URL, socket_connect_timeout=0.5, socket_timeout=0.5
+            settings.redis_url, socket_connect_timeout=0.5, socket_timeout=0.5
         )
         _redis.ping()
-        _redis_label = f"Redis ({_REDIS_URL})"
+        _redis_label = f"Redis ({settings.redis_url})"
     except Exception as exc:  # noqa: BLE001 - any failure -> fall back
         log.warning("REDIS_URL set but unreachable (%s); using in-process cache", exc)
         _redis = None

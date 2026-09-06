@@ -13,7 +13,7 @@ Run (from backend/): python -m scripts.anchor_deliveries
 import time
 
 from app.db import get_cursor
-from app.solana_client import build_memo, ensure_funded, get_wallet, send_memo
+from app.services.solana import build_memo, ensure_funded, get_wallet, send_memo
 
 
 def fetch_pending_deliveries() -> list[dict]:
