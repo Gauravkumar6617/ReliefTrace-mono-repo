@@ -101,6 +101,7 @@ export interface ContributionInput {
   resource_type: string;
   quantity: number;
   zone_name: string;
+  website?: string; // honeypot - always sent empty by real users
 }
 
 export interface ContributionResult {
