@@ -61,6 +61,7 @@ export interface ZoneGap {
   quantity_fulfilled: number;
   unmet_need: number;
   urgency_level: UrgencyLevel;
+  unit: string;
 }
 
 export interface ResponseTrendPoint {
@@ -76,6 +77,7 @@ export interface ResourceBreakdown {
   total_needed: number;
   total_fulfilled: number;
   unmet_need: number;
+  unit: string;
 }
 
 export interface RecentDelivery {
@@ -118,6 +120,7 @@ export interface DashboardSnapshot {
   resource_breakdown: ResourceBreakdown[];
   response_trend: ResponseTrendPoint[];
   recent_deliveries: RecentDelivery[];
+  affected_population: number;
 }
 
 export interface ContributionInput {

@@ -1,159 +1,154 @@
 """
-Synthetic disaster-relief data for ReliefTrace: relief requests from zones and
-the deliveries that (partially) fulfill them, spread across a 30-day disaster
-timeline. Each zone gets a random "coverage factor" so some zones end up
-badly under-served - that unevenness is what the zone-gaps insight surfaces.
+Relief-need dataset for ReliefTrace, grounded in real disaster events.
+
+The need side is NOT synthetic. It is 15 real districts hit by the
+2024 Assam floods and the 2025 Punjab floods, each with its reported
+affected-population figure (distributed evenly within the state, since public
+per-district figures aren't available), and per-resource quantities computed
+from Sphere Handbook (2018) humanitarian minimum standards.
+
+The delivery side is intentionally NOT generated here any more - deliveries
+come only from live submissions through the dashboard.
+
+Sources
+  - Assam 2024 floods: ~400,000 people affected across 19 districts.
+  - Punjab 2025 floods: ~3.54 million people affected across 13+ districts.
+  Even split per state (400,000 / 19; 3,540,000 / 13) - exact per-district
+  numbers are not public.
+
+Sphere Handbook minimum standards applied per affected person:
+  - Water:    15 litres / person / day
+  - Food:     ~2.1 kg   / person / day  (basic ration)
+  - Medical:  ~1 kit    / 500 people
+  - Shelter:  ~1 tent   / 5 people
+  - Clothing: 1 set     / person
+Water and food are projected over DAYS_OF_NEED days of relief-phase supply.
 
 Run (from backend/): python -m scripts.generate_data
-Output: data/relief_requests.csv, data/relief_deliveries.csv
+Output: data/relief_requests.csv
 """
 
+import math
 import os
 import random
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, timedelta
 
 import pandas as pd
-from faker import Faker
 
 DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "data"))
 
-fake = Faker()
 random.seed(42)
-Faker.seed(42)
 
-NUM_ZONES = 15
-NUM_REQUESTS = 200
-NUM_DELIVERIES = 150
-TIMELINE_DAYS = 30
+# --- real event parameters --------------------------------------------------
+DAYS_OF_NEED = 30  # relief-phase planning window for water/food projections
 
-RESOURCE_TYPES = ["Food", "Water", "Shelter", "Medical", "Clothing"]
-URGENCY_LEVELS = ["low", "medium", "critical"]
-URGENCY_WEIGHTS = [0.30, 0.45, 0.25]
+ASSAM_TOTAL_AFFECTED = 400_000
+ASSAM_AFFECTED_DISTRICTS = 19
+PUNJAB_TOTAL_AFFECTED = 3_540_000
+PUNJAB_AFFECTED_DISTRICTS = 13
 
-DONOR_ORGS = [
-    "Red Cross Lucknow",
-    "Doctors Without Borders",
-    "World Central Kitchen",
-    "UNICEF Field Unit",
-    "Direct Relief",
-    "Local Rotary Chapter",
-    "CARE International",
-    "Save the Children",
-    "Habitat for Humanity",
-    "Islamic Relief",
+ASSAM_PER_DISTRICT = round(ASSAM_TOTAL_AFFECTED / ASSAM_AFFECTED_DISTRICTS)      # ~21,053
+PUNJAB_PER_DISTRICT = round(PUNJAB_TOTAL_AFFECTED / PUNJAB_AFFECTED_DISTRICTS)   # ~272,308
+
+# The floods themselves were mid-2024 (Assam) and Aug/Sep 2025 (Punjab), but
+# REQUEST_DATE is when the need estimate was *entered into ReliefTrace* - a
+# rapid-assessment sweep in the last few weeks, per state. Keeping these recent
+# is what makes the Response Trend chart legible next to live deliveries.
+ASSAM_ASSESSMENT = date.today() - timedelta(days=24)
+PUNJAB_ASSESSMENT = date.today() - timedelta(days=16)
+
+ASSESSMENT_DATE = {"Assam": ASSAM_ASSESSMENT, "Punjab": PUNJAB_ASSESSMENT}
+
+# (district, state, affected_population)
+DISTRICTS = [
+    ("Karimganj", "Assam", ASSAM_PER_DISTRICT),
+    ("Darrang", "Assam", ASSAM_PER_DISTRICT),
+    ("Tamulpur", "Assam", ASSAM_PER_DISTRICT),
+    ("Tarn Taran", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Hoshiarpur", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Kapurthala", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Rupnagar", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Moga", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Sangrur", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Barnala", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Patiala", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Gurdaspur", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Amritsar", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Ferozepur", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Fazilka", "Punjab", PUNJAB_PER_DISTRICT),
 ]
 
-# roughly proportional to how much of a resource a single request/delivery
-# tends to involve
-QUANTITY_RANGES = {
-    "Food": (50, 2000),        # meals / kg
-    "Water": (100, 5000),      # liters
-    "Shelter": (5, 200),       # tents / units
-    "Medical": (10, 500),      # kits
-    "Clothing": (20, 1000),    # units
+# Sphere-derived need per affected person, and the unit it's measured in.
+RESOURCES = {
+    "Water": ("litres", lambda p: p * 15 * DAYS_OF_NEED),
+    "Food": ("kg", lambda p: round(p * 2.1 * DAYS_OF_NEED)),
+    "Medical": ("kits", lambda p: math.ceil(p / 500)),
+    "Shelter": ("tents", lambda p: math.ceil(p / 5)),
+    "Clothing": ("sets", lambda p: p),
 }
 
-DISASTER_START = datetime.now() - timedelta(days=TIMELINE_DAYS)
+# Illustrative early-response reach - NOT from a source. Water/food tend to
+# arrive first; medical/shelter lag. Multiplied by a per-district capacity
+# factor so some districts show partial coverage and others near none. Tuned
+# so the resulting unmet-% spread exercises all three urgency bands rather
+# than showing a wall of "critical".
+FULFILL_CEILING = {
+    "Water": 0.85,
+    "Food": 0.70,
+    "Clothing": 0.55,
+    "Shelter": 0.40,
+    "Medical": 0.45,
+}
 
 
-def make_zones(n: int) -> list[str]:
-    names = set()
-    while len(names) < n:
-        names.add(f"{fake.city()} Zone")
-    return sorted(names)
+def urgency_from_unmet_pct(pct: float) -> str:
+    if pct >= 66:
+        return "critical"
+    if pct >= 33:
+        return "medium"
+    return "low"
 
 
-def random_date_in_timeline(start: datetime, days_elapsed_max: int) -> datetime:
-    return start + timedelta(days=random.randint(0, days_elapsed_max))
+def main() -> None:
+    # per-district early-response capacity (0.4 = cut off, 1.35 = well reached)
+    capacity = {name: random.uniform(0.35, 1.5) for name, *_ in DISTRICTS}
 
+    rows = []
+    for name, state, population in DISTRICTS:
+        zone = f"{name}, {state}"
+        for resource, (unit, need_fn) in RESOURCES.items():
+            needed = int(need_fn(population))
+            frac = min(0.95, random.uniform(0.0, FULFILL_CEILING[resource]) * capacity[name])
+            fulfilled = round(needed * frac)
+            unmet_pct = 100 * (needed - fulfilled) / needed if needed else 0
+            # entered over a short assessment sweep, per state
+            request_date = ASSESSMENT_DATE[state] + timedelta(days=random.randint(0, 4))
 
-def main():
-    zones = make_zones(NUM_ZONES)
-    # 0.15 = badly under-served, 0.95 = well covered - drives delivery odds/size below
-    coverage_factor = {zone: random.uniform(0.15, 0.95) for zone in zones}
+            rows.append(
+                {
+                    "REQUEST_ID": str(uuid.uuid5(uuid.NAMESPACE_URL, f"relieftrace/{zone}/{resource}")),
+                    "ZONE_NAME": zone,
+                    "RESOURCE_TYPE": resource,
+                    "QUANTITY_NEEDED": needed,
+                    "QUANTITY_FULFILLED": fulfilled,
+                    "URGENCY_LEVEL": urgency_from_unmet_pct(unmet_pct),
+                    "REQUEST_DATE": request_date.strftime("%Y-%m-%d"),
+                    "UNIT": unit,
+                    "AFFECTED_POPULATION": population,
+                }
+            )
 
-    requests = []
-    for _ in range(NUM_REQUESTS):
-        zone = random.choice(zones)
-        resource_type = random.choice(RESOURCE_TYPES)
-        lo, hi = QUANTITY_RANGES[resource_type]
-        quantity_needed = random.randint(lo, hi)
-        request_date = random_date_in_timeline(DISASTER_START, TIMELINE_DAYS - 1)
-
-        # zones with low coverage skew toward higher urgency - the need doesn't
-        # go away just because no one is responding to it
-        cf = coverage_factor[zone]
-        if cf < 0.35:
-            urgency = random.choices(URGENCY_LEVELS, weights=[0.10, 0.30, 0.60])[0]
-        elif cf < 0.65:
-            urgency = random.choices(URGENCY_LEVELS, weights=URGENCY_WEIGHTS)[0]
-        else:
-            urgency = random.choices(URGENCY_LEVELS, weights=[0.45, 0.40, 0.15])[0]
-
-        requests.append(
-            {
-                "REQUEST_ID": str(uuid.uuid4()),
-                "ZONE_NAME": zone,
-                "RESOURCE_TYPE": resource_type,
-                "QUANTITY_NEEDED": quantity_needed,
-                "QUANTITY_FULFILLED": 0,  # filled in after deliveries are generated
-                "URGENCY_LEVEL": urgency,
-                "REQUEST_DATE": request_date.strftime("%Y-%m-%d"),
-                "_request_date_obj": request_date,
-                "_coverage_factor": cf,
-            }
-        )
-
-    # deliveries are drawn against requests weighted by each zone's coverage
-    # factor, so well-covered zones get picked (and fulfilled generously)
-    # far more often than under-served ones
-    weights = [r["_coverage_factor"] for r in requests]
-    deliveries = []
-    fulfilled_totals: dict[str, float] = {r["REQUEST_ID"]: 0 for r in requests}
-
-    for _ in range(NUM_DELIVERIES):
-        req = random.choices(requests, weights=weights, k=1)[0]
-        cf = req["_coverage_factor"]
-        # a single delivery covers somewhere between 10% and 70% of the need,
-        # scaled by the zone's coverage factor
-        fraction = random.uniform(0.10, 0.70) * cf
-        quantity_sent = max(1, round(req["QUANTITY_NEEDED"] * fraction))
-
-        delivery_date = req["_request_date_obj"] + timedelta(days=random.randint(0, 5))
-        delivery_date = min(delivery_date, DISASTER_START + timedelta(days=TIMELINE_DAYS - 1))
-
-        deliveries.append(
-            {
-                "DELIVERY_ID": str(uuid.uuid4()),
-                "REQUEST_ID": req["REQUEST_ID"],
-                "ZONE_NAME": req["ZONE_NAME"],
-                "DONOR_ORG": random.choice(DONOR_ORGS),
-                "CAUSE_NOTE": "",  # seed rows carry no free-text note
-                "RESOURCE_TYPE": req["RESOURCE_TYPE"],
-                "QUANTITY_SENT": quantity_sent,
-                "DELIVERY_DATE": delivery_date.strftime("%Y-%m-%d"),
-                "SOLANA_TX_SIG": "",  # populated later by solana_deliveries.py
-                "SOURCE": "seed",
-            }
-        )
-        fulfilled_totals[req["REQUEST_ID"]] += quantity_sent
-
-    for req in requests:
-        req["QUANTITY_FULFILLED"] = round(fulfilled_totals[req["REQUEST_ID"]])
-        del req["_request_date_obj"]
-        del req["_coverage_factor"]
-
-    requests_df = pd.DataFrame(requests).sort_values("REQUEST_DATE").reset_index(drop=True)
-    deliveries_df = pd.DataFrame(deliveries).sort_values("DELIVERY_DATE").reset_index(drop=True)
+    df = pd.DataFrame(rows).sort_values(["ZONE_NAME", "RESOURCE_TYPE"]).reset_index(drop=True)
 
     os.makedirs(DATA_DIR, exist_ok=True)
-    requests_path = os.path.join(DATA_DIR, "relief_requests.csv")
-    deliveries_path = os.path.join(DATA_DIR, "relief_deliveries.csv")
-    requests_df.to_csv(requests_path, index=False)
-    deliveries_df.to_csv(deliveries_path, index=False)
-    print(f"Wrote {len(requests_df)} rows to {requests_path}")
-    print(f"Wrote {len(deliveries_df)} rows to {deliveries_path}")
+    path = os.path.join(DATA_DIR, "relief_requests.csv")
+    df.to_csv(path, index=False)
+
+    total_pop = sum(p for _, _, p in DISTRICTS)
+    print(f"Wrote {len(df)} request rows ({len(DISTRICTS)} districts x {len(RESOURCES)} resources) to {path}")
+    print(f"Total affected population represented: {total_pop:,}")
+    print("Delivery side is NOT generated - it comes from live submissions only.")
 
 
 if __name__ == "__main__":

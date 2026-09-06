@@ -25,23 +25,26 @@ class DashboardSnapshot(BaseModel):
     resource_breakdown: list[ResourceBreakdown]
     response_trend: list[ResponseTrendPoint]
     recent_deliveries: list[RecentDelivery]
+    affected_population: int
 
 
 @router.get("/dashboard", response_model=DashboardSnapshot)
 async def dashboard(deliveries_limit: int = 25):
-    """One call for the whole dashboard. The four queries run concurrently on
-    the connection pool (or are served from cache)."""
-    gaps, breakdown, trend, deliveries = await asyncio.gather(
+    """One call for the whole dashboard. The queries run concurrently on the
+    connection pool (or are served from cache)."""
+    gaps, breakdown, trend, deliveries, population = await asyncio.gather(
         run_in_threadpool(insights.zone_gaps),
         run_in_threadpool(insights.resource_breakdown),
         run_in_threadpool(insights.response_trend),
         run_in_threadpool(insights.recent_deliveries, deliveries_limit),
+        run_in_threadpool(insights.affected_population),
     )
     return DashboardSnapshot(
         zone_gaps=gaps,
         resource_breakdown=breakdown,
         response_trend=trend,
         recent_deliveries=deliveries,
+        affected_population=population,
     )
 
 

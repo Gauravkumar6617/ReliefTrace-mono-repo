@@ -25,10 +25,13 @@ _FALLBACK = "I couldn't find relevant data for that question."
 _SYSTEM = (
     "You are ReliefTrace's data assistant. Answer questions about disaster-relief "
     "resource needs and deliveries strictly from the tools provided - call whichever "
-    "tools you need, then answer in 1-4 sentences with concrete zone names, resource "
-    "types and numbers. Never invent data. All quantities are in generic 'units'. "
-    "If the question is unrelated to relief needs or deliveries, or the tool results "
-    f"do not contain the answer, reply exactly: {_FALLBACK}"
+    "tools you need, then answer in 1-4 sentences with concrete district names, resource "
+    "types and numbers. Need figures come from real 2024 Assam / 2025 Punjab flood "
+    "affected-population data via Sphere Handbook standards. Each row states its unit "
+    "(litres, kg, kits, tents, sets) - always quote the unit and never add or compare "
+    "quantities across different units; use the % of need unmet to compare. Never invent "
+    f"data. If the question is unrelated to relief needs or deliveries, or the tool "
+    f"results do not contain the answer, reply exactly: {_FALLBACK}"
 )
 
 # --- tool implementations (return compact JSON-friendly structures) ----------
@@ -39,9 +42,11 @@ def _zone_gaps(limit: int = 25) -> list[dict]:
         {
             "zone": g.zone_name,
             "resource": g.resource_type,
+            "unit": g.unit,
             "needed": round(g.quantity_needed),
             "fulfilled": round(g.quantity_fulfilled),
             "unmet": round(g.unmet_need),
+            "unmet_pct": round(100 * g.unmet_need / g.quantity_needed) if g.quantity_needed else 0,
             "urgency": g.urgency_level,
         }
         for g in insights.zone_gaps()[: max(1, min(limit, 100))]
@@ -52,9 +57,11 @@ def _resource_breakdown() -> list[dict]:
     return [
         {
             "resource": r.resource_type,
+            "unit": r.unit,
             "needed": round(r.total_needed),
             "fulfilled": round(r.total_fulfilled),
             "unmet": round(r.unmet_need),
+            "unmet_pct": round(100 * r.unmet_need / r.total_needed) if r.total_needed else 0,
         }
         for r in insights.resource_breakdown()
     ]
@@ -88,11 +95,21 @@ def _recent_deliveries(limit: int = 15) -> list[dict]:
     ]
 
 
+def _affected_population() -> dict:
+    return {
+        "total_people_affected": insights.affected_population(),
+        "districts": 15,
+        "events": ["2024 Assam floods", "2025 Punjab floods"],
+        "basis": "reported affected population, Sphere Handbook minimum standards",
+    }
+
+
 _IMPLS = {
     "get_zone_gaps": _zone_gaps,
     "get_resource_breakdown": _resource_breakdown,
     "get_response_trend": _response_trend,
     "get_recent_deliveries": _recent_deliveries,
+    "get_affected_population": _affected_population,
 }
 
 _TOOLS = [
@@ -124,6 +141,11 @@ _TOOLS = [
             "type": "object",
             "properties": {"limit": {"type": "integer", "description": "max rows, default 15"}},
         },
+    },
+    {
+        "name": "get_affected_population",
+        "description": "Total people affected across the 15 districts, and which flood events the dataset covers.",
+        "parameters": {"type": "object", "properties": {}},
     },
 ]
 
