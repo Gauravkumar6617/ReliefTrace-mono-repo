@@ -82,13 +82,22 @@ The dashboard's "Verify on-chain" links go straight to Solana Explorer on
 devnet. The donor's **email is deliberately never written on-chain** — only the
 name, resource, quantity and zone.
 
-### ✨ Google AI (Gemini) — the situation briefing
+### ✨ Google AI (Gemini) — grounded on the live numbers
 
-The `ai-briefing` endpoint takes the *current* zone-gap data and 30-day trend
-straight out of Snowflake, hands it to **Gemini** (`gemini-3.6-flash`), and asks
-it to name the zones that need intervention first and explain the reasoning in
-plain language — a short paragraph plus a prioritized shortlist. It's grounded
-on the live numbers and told not to invent data.
+Three ways, all on `gemini-3.6-flash`, all fed only real Snowflake data and told
+never to invent numbers or compare across units:
+
+- **Situation briefing** (`GET /api/insights/ai-briefing`) — Gemini returns
+  **structured JSON** (schema-constrained): a narrative plus a ranked list of
+  priority districts, each with a reason, a recommended action, key resources
+  and a confidence level. Rendered as action cards. Cached 1 h.
+- **Ask ReliefTrace** (`POST /api/ask`) — a plain-English question answered with
+  **function calling**: Gemini picks from five tools that run the real insight
+  queries, we execute them and feed results back, and the reply lists which
+  tools it used. Off-topic / unanswerable questions get a fixed fallback line.
+- **PDF briefing** (`GET /api/insights/ai-briefing.pdf`) — the briefing plus a
+  top-10 gap table rendered to a one-page PDF (reportlab); also attached to the
+  donor receipt email.
 
 ---
 
@@ -100,7 +109,8 @@ React + Vite (single page)
         ▼
 FastAPI  ──────────────► Snowflake      (requests, deliveries, analytics)
    │     ──────────────► Solana devnet  (memo tx per contribution)
-   │     ──────────────► Gemini API     (situation briefing)
+   │     ──────────────► Gemini API     (briefing, Q&A via function calling, PDF)
+   │     ──────────────► SMTP           (donor receipt email — optional)
    └──── Redis  ─┬─────► insight-query cache (falls back to in-process)
                  └─────► pub/sub backplane for the live SSE feed (multi-replica)
 ```
@@ -113,20 +123,23 @@ business logic), `app/api/routes` (thin routers).
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/dashboard` | — | all four insight payloads in one round trip (queries run concurrently) |
-| `GET` | `/api/insights/zone-gaps` | — | unmet need per zone + resource, with urgency |
-| `GET` | `/api/insights/response-trend` | — | requested vs. delivered per day |
-| `GET` | `/api/insights/resource-breakdown` | — | supply vs. demand per resource type |
-| `GET` | `/api/insights/ai-briefing` | `X-API-Key` | Gemini-written situation briefing |
+| `GET` | `/` | — | service info (name, health/docs links) |
+| `GET` | `/health` | — | liveness + current SSE client count |
+| `GET` | `/api/dashboard` | — | every insight payload + total people affected, one round trip |
+| `GET` | `/api/insights/zone-gaps` | — | unmet need per district + resource, with unit + urgency |
+| `GET` | `/api/insights/response-trend` | — | needs logged vs. deliveries per day |
+| `GET` | `/api/insights/resource-breakdown` | — | needed vs. fulfilled per resource type |
+| `GET` | `/api/insights/ai-briefing` | `X-API-Key` | structured Gemini situation briefing (JSON) |
+| `GET` | `/api/insights/ai-briefing.pdf` | `X-API-Key` | the briefing + top-10 gap table as a PDF |
+| `POST` | `/api/ask` | `X-API-Key` | plain-English question, answered via Gemini function calling |
 | `GET` | `/api/deliveries/recent` | — | latest deliveries with verify links |
 | `GET` | `/api/zones`, `/api/resource-types` | — | form options |
 | `GET` | `/api/stream` | — | Server-Sent Events; one `message` per new contribution |
-| `GET` | `/health` | — | liveness + current SSE client count |
-| `POST` | `/api/contribute` | `X-API-Key` | write delivery → Solana memo → store signature → broadcast |
+| `POST` | `/api/contribute` | `X-API-Key` | on-chain memo → store in Snowflake → broadcast → email receipt |
 
-`X-API-Key` is only enforced when the backend has `API_KEY` set; unset =
-auth disabled. Swagger (`/docs`, when the backend is running) shows the
-padlock and an **Authorize** button for the two protected routes.
+`X-API-Key` is only enforced when the backend has `API_KEY` set; unset = auth
+disabled (local dev). Swagger (`/docs`, non-production) shows the padlock and an
+**Authorize** button for the protected routes.
 
 The contribution form also carries a **honeypot** field (`website`): hidden
 from real users, rejected server-side with `400` if a bot fills it.
@@ -150,8 +163,8 @@ snow-donation/
 │   │   │   ├── events.py         SSE broadcaster + Redis pub/sub fan-out
 │   │   │   └── security.py       X-API-Key dependency (Swagger padlock)
 │   │   ├── db/pool.py            Snowflake connection pool
-│   │   ├── services/             insights, contributions, briefing, solana
-│   │   └── api/routes/           health, insights, contribute, briefing, stream
+│   │   ├── services/             insights, contributions, briefing, ask, gemini, pdf, email, solana
+│   │   └── api/routes/           health, insights, contribute, briefing, ask, stream
 │   ├── scripts/                  run-once utilities (python -m scripts.<name>)
 │   │   ├── generate_data.py      real-district need dataset (Sphere standards) → data/relief_requests.csv
 │   │   ├── load_to_snowflake.py  PUT + TRUNCATE + COPY INTO (RELIEF_REQUESTS only)
@@ -161,12 +174,13 @@ snow-donation/
 │   ├── data/                     generated CSVs (git-ignored)
 │   └── keys/                     Snowflake key + Solana wallet (git-ignored)
 └── frontend/
+    ├── public/                   favicons + site.webmanifest
     └── src/
         ├── pages/Dashboard.tsx   the UI
         ├── hooks/useDashboard.ts initial load + live (SSE) updates + derived stats
-        ├── components/           charts, skeleton loaders, count-up
+        ├── components/           charts, skeletons, count-up, Combobox (zone field)
         └── lib/
-            ├── api.ts            typed fetch client
+            ├── api.ts            typed fetch client (sends X-API-Key when set)
             └── liveEvents.ts     EventSource wrapper for /api/stream
 ```
 
@@ -197,14 +211,46 @@ doppler secrets set SNOWFLAKE_PRIVATE_KEY_PATH=keys/snowflake_rsa_key.p8
 doppler secrets set GEMINI_API_KEY=AIza...
 doppler secrets set REDIS_URL='rediss://default:...@...upstash.io:6379'
 
-# optional: require an API key on POST /api/contribute and the AI briefing
+# optional: gate the write / paid endpoints with a shared key
 doppler secrets set API_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(32))')"
 doppler secrets set VITE_API_KEY="<same value as API_KEY>"
+
+# optional: email the donor a receipt (any SMTP provider / Gmail App Password)
+doppler secrets set SMTP_HOST=smtp.gmail.com SMTP_USER=you@gmail.com \
+                    SMTP_PASSWORD=<app-password> SMTP_FROM='ReliefTrace <you@gmail.com>'
 ```
 
-Other optional knobs (see `backend/.env.example` for the full list):
-`SNOWFLAKE_POOL_SIZE` (default `3`), `EVENTS_CHANNEL` (default
-`relieftrace:events`).
+#### Full variable reference
+
+**Backend** (`backend/.env.example` is the canonical checklist):
+
+| Var | Required? | Notes |
+| --- | --- | --- |
+| `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER` | **yes** | account identifier + login name |
+| `SNOWFLAKE_PRIVATE_KEY_PATH` **or** `SNOWFLAKE_PRIVATE_KEY` | **yes** | key-pair auth; `_PATH` locally, paste the PEM in `_KEY` on a host where `keys/` isn't uploaded. `SNOWFLAKE_PASSWORD` is a fallback but fails for MFA users |
+| `SNOWFLAKE_DATABASE` / `SNOWFLAKE_SCHEMA` / `SNOWFLAKE_WAREHOUSE` / `SNOWFLAKE_ROLE` | no | default to `RELIEFTRACE_DB` / `PUBLIC` / `GENEROSITY_WH` / none |
+| `SNOWFLAKE_POOL_SIZE` | no | connection pool size, default `3` (keep < 5) |
+| `GEMINI_API_KEY` | for AI | without it, `/api/insights/ai-briefing`, `.pdf` and `/api/ask` return 503; everything else works |
+| `GEMINI_MODEL` | no | default `gemini-3.6-flash` |
+| `API_KEY` | no | when set, `X-API-Key` is required on `/api/contribute`, `/api/ask`, `/api/insights/ai-briefing[.pdf]`. Unset = auth off |
+| `REDIS_URL` | no | insight cache + SSE pub/sub backplane; falls back to in-process |
+| `EVENTS_CHANNEL` | no | Redis pub/sub channel, default `relieftrace:events` |
+| `SMTP_HOST` | no | set to enable donor receipt emails |
+| `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_STARTTLS` / `SMTP_FROM` | no | defaults: `587` / — / — / `true` / `ReliefTrace <noreply@relieftrace.local>`. Port `465` uses implicit TLS |
+| `FRONTEND_ORIGIN` | prod | comma-separated CORS allowlist, default localhost:5173/5174 |
+| `ENVIRONMENT` | no | `production` disables `/docs`, `/redoc`, `/openapi.json` |
+| `LOG_LEVEL` | no | `INFO` default |
+| `LOGFIRE_TOKEN` | no | enables Pydantic Logfire tracing; no-op without it |
+| `SOLANA_CLUSTER` / `SOLANA_RPC_URL` | no | default `devnet` / public devnet RPC |
+| `SOLANA_WALLET_SECRET` | on a host | the 64-int `keys/wallet.json` array, for hosts where `keys/` isn't uploaded |
+
+**Frontend** (`frontend/.env.example`), all build-time (`VITE_*` is inlined — rebuild to change):
+
+| Var | Notes |
+| --- | --- |
+| `VITE_API_BASE_URL` | backend URL, default `http://localhost:8000` |
+| `VITE_SOLANA_CLUSTER` | for the "Verify on-chain" explorer links, default `devnet` |
+| `VITE_API_KEY` | only if the backend has `API_KEY` set; sent as `X-API-Key`. Note: readable in the shipped bundle — it deters casual abuse, not a determined attacker |
 
 Everything then runs through `doppler run --`, which injects the variables for
 that one command:
@@ -286,18 +332,20 @@ and watch it get recorded and verified.
 ## Non-goals
 
 Deliberately not built, to keep the surface honest and small: user accounts,
-real payments, email sending, admin panels, multi-page routing, database
-replication/sharding, Docker, or any infrastructure beyond FastAPI, React,
-Snowflake, Solana devnet, Gemini, and Redis. Auth is limited to one optional
-shared API key on the two write/paid endpoints — there is no login or per-user
-identity.
+real payments, admin panels, multi-page routing, database replication/sharding,
+Docker, or any infrastructure beyond FastAPI, React, Snowflake, Solana devnet,
+Gemini, Redis, and an optional SMTP server. Auth is limited to one optional
+shared API key on the write / paid endpoints — there is no login or per-user
+identity. Outbound email is a single fire-and-forget donor receipt, nothing
+more.
 
 ## Known limitations
 
 - **Devnet faucet limits.** The Solana faucet rate-limits by IP and address;
   first-time funding sometimes needs the web faucet with a GitHub sign-in.
-- **Gemini key required for the briefing.** Without `GEMINI_API_KEY` that one
-  endpoint returns 503; everything else works.
+- **Gemini key required for the AI features.** Without `GEMINI_API_KEY` the
+  briefing, its PDF, and Ask ReliefTrace return 503; everything else works. The
+  PDF is also skipped from the receipt email in that case.
 - **Rate-limit state is per-process.** The Snowflake pool and the cache both
   scale out (the cache and the SSE fan-out share Redis), but slowapi's
   rate-limit counters live in process memory — behind multiple replicas each
