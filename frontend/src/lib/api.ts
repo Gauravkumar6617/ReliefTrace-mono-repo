@@ -1,7 +1,14 @@
-// Fetch wrapper for ReliefTrace's read-only insights API. No auth, no
-// cookies - every route here is a public GET.
+// Fetch wrapper for ReliefTrace's API. Reads are public; the write path and the
+// AI briefing require an API key when the backend has one configured - set
+// VITE_API_KEY and it's sent as the X-API-Key header.
 
 export const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+
+const API_KEY = (import.meta.env.VITE_API_KEY as string | undefined) || "";
+
+function authHeaders(): Record<string, string> {
+  return API_KEY ? { "X-API-Key": API_KEY } : {};
+}
 
 class ApiError extends Error {
   status: number;
@@ -24,7 +31,7 @@ async function parseError(res: Response): Promise<never> {
 }
 
 async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`);
+  const res = await fetch(`${BASE_URL}${path}`, { headers: authHeaders() });
   if (!res.ok) await parseError(res);
   return res.json();
 }
@@ -32,7 +39,7 @@ async function getJson<T>(path: string): Promise<T> {
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
   });
   if (!res.ok) await parseError(res);
