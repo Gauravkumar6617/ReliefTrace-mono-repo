@@ -567,8 +567,8 @@ export function Dashboard() {
         <div className="panel">
           <h2>Response Trend</h2>
           <p className="table-hint">
-            Counts per day. Needs were logged at event onset (2024 Assam, 2025 Punjab floods);
-            deliveries are live and land today — so the axis spans both periods.
+            Needs logged (rapid-assessment sweep) vs. deliveries recorded, per day — counts,
+            since resource quantities aren&rsquo;t comparable across units.
           </p>
           {loading ? (
             <SkeletonChart height={260} />

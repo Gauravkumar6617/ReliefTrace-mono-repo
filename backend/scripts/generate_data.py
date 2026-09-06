@@ -51,26 +51,32 @@ PUNJAB_AFFECTED_DISTRICTS = 13
 ASSAM_PER_DISTRICT = round(ASSAM_TOTAL_AFFECTED / ASSAM_AFFECTED_DISTRICTS)      # ~21,053
 PUNJAB_PER_DISTRICT = round(PUNJAB_TOTAL_AFFECTED / PUNJAB_AFFECTED_DISTRICTS)   # ~272,308
 
-ASSAM_ONSET = date(2024, 7, 1)
-PUNJAB_ONSET = date(2025, 9, 1)
+# The floods themselves were mid-2024 (Assam) and Aug/Sep 2025 (Punjab), but
+# REQUEST_DATE is when the need estimate was *entered into ReliefTrace* - a
+# rapid-assessment sweep in the last few weeks, per state. Keeping these recent
+# is what makes the Response Trend chart legible next to live deliveries.
+ASSAM_ASSESSMENT = date.today() - timedelta(days=24)
+PUNJAB_ASSESSMENT = date.today() - timedelta(days=16)
 
-# (district, state, affected_population, event onset date)
+ASSESSMENT_DATE = {"Assam": ASSAM_ASSESSMENT, "Punjab": PUNJAB_ASSESSMENT}
+
+# (district, state, affected_population)
 DISTRICTS = [
-    ("Karimganj", "Assam", ASSAM_PER_DISTRICT, ASSAM_ONSET),
-    ("Darrang", "Assam", ASSAM_PER_DISTRICT, ASSAM_ONSET),
-    ("Tamulpur", "Assam", ASSAM_PER_DISTRICT, ASSAM_ONSET),
-    ("Tarn Taran", "Punjab", PUNJAB_PER_DISTRICT, PUNJAB_ONSET),
-    ("Hoshiarpur", "Punjab", PUNJAB_PER_DISTRICT, PUNJAB_ONSET),
-    ("Kapurthala", "Punjab", PUNJAB_PER_DISTRICT, PUNJAB_ONSET),
-    ("Rupnagar", "Punjab", PUNJAB_PER_DISTRICT, PUNJAB_ONSET),
-    ("Moga", "Punjab", PUNJAB_PER_DISTRICT, PUNJAB_ONSET),
-    ("Sangrur", "Punjab", PUNJAB_PER_DISTRICT, PUNJAB_ONSET),
-    ("Barnala", "Punjab", PUNJAB_PER_DISTRICT, PUNJAB_ONSET),
-    ("Patiala", "Punjab", PUNJAB_PER_DISTRICT, PUNJAB_ONSET),
-    ("Gurdaspur", "Punjab", PUNJAB_PER_DISTRICT, PUNJAB_ONSET),
-    ("Amritsar", "Punjab", PUNJAB_PER_DISTRICT, PUNJAB_ONSET),
-    ("Ferozepur", "Punjab", PUNJAB_PER_DISTRICT, PUNJAB_ONSET),
-    ("Fazilka", "Punjab", PUNJAB_PER_DISTRICT, PUNJAB_ONSET),
+    ("Karimganj", "Assam", ASSAM_PER_DISTRICT),
+    ("Darrang", "Assam", ASSAM_PER_DISTRICT),
+    ("Tamulpur", "Assam", ASSAM_PER_DISTRICT),
+    ("Tarn Taran", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Hoshiarpur", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Kapurthala", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Rupnagar", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Moga", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Sangrur", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Barnala", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Patiala", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Gurdaspur", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Amritsar", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Ferozepur", "Punjab", PUNJAB_PER_DISTRICT),
+    ("Fazilka", "Punjab", PUNJAB_PER_DISTRICT),
 ]
 
 # Sphere-derived need per affected person, and the unit it's measured in.
@@ -109,14 +115,15 @@ def main() -> None:
     capacity = {name: random.uniform(0.35, 1.5) for name, *_ in DISTRICTS}
 
     rows = []
-    for name, state, population, onset in DISTRICTS:
+    for name, state, population in DISTRICTS:
         zone = f"{name}, {state}"
         for resource, (unit, need_fn) in RESOURCES.items():
             needed = int(need_fn(population))
             frac = min(0.95, random.uniform(0.0, FULFILL_CEILING[resource]) * capacity[name])
             fulfilled = round(needed * frac)
             unmet_pct = 100 * (needed - fulfilled) / needed if needed else 0
-            request_date = onset + timedelta(days=random.randint(0, 9))
+            # entered over a short assessment sweep, per state
+            request_date = ASSESSMENT_DATE[state] + timedelta(days=random.randint(0, 4))
 
             rows.append(
                 {
@@ -138,7 +145,7 @@ def main() -> None:
     path = os.path.join(DATA_DIR, "relief_requests.csv")
     df.to_csv(path, index=False)
 
-    total_pop = sum(p for _, _, p, _ in DISTRICTS)
+    total_pop = sum(p for _, _, p in DISTRICTS)
     print(f"Wrote {len(df)} request rows ({len(DISTRICTS)} districts x {len(RESOURCES)} resources) to {path}")
     print(f"Total affected population represented: {total_pop:,}")
     print("Delivery side is NOT generated - it comes from live submissions only.")
