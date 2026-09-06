@@ -1,11 +1,11 @@
 """
-Pushes relief_requests.csv and relief_deliveries.csv into Snowflake: PUT to an
-internal stage per table, then COPY INTO. Run once after generate_data.py, or
-re-run whenever there's a fresh CSV to load (stage files are overwritten and
-loads use full-refresh truncate+load semantics below).
+Pushes relief_requests.csv into Snowflake: PUT to an internal stage, then
+TRUNCATE + COPY INTO (full refresh). Run after generate_data.py.
 
-Assumes schema.sql has already been run in Snowsight to create the database/
-tables - this script only loads data, it doesn't create RELIEFTRACE_DB itself.
+Only RELIEF_REQUESTS is loaded. RELIEF_DELIVERIES is deliberately left alone -
+those rows come from live dashboard submissions, not from a seed file.
+
+Assumes schema.sql / the migrations have been run in Snowsight already.
 
 Run (from backend/): python -m scripts.load_to_snowflake
 """
@@ -35,23 +35,8 @@ TABLES = {
             "QUANTITY_FULFILLED",
             "URGENCY_LEVEL",
             "REQUEST_DATE",
-        ],
-    },
-    "RELIEF_DELIVERIES": {
-        "csv": os.path.join(DATA_DIR, "relief_deliveries.csv"),
-        "stage": "RELIEF_DELIVERIES_STAGE",
-        "format": "RELIEF_DELIVERIES_CSV_FORMAT",
-        "columns": [
-            "DELIVERY_ID",
-            "REQUEST_ID",
-            "ZONE_NAME",
-            "DONOR_ORG",
-            "CAUSE_NOTE",
-            "RESOURCE_TYPE",
-            "QUANTITY_SENT",
-            "DELIVERY_DATE",
-            "SOLANA_TX_SIG",
-            "SOURCE",
+            "UNIT",
+            "AFFECTED_POPULATION",
         ],
     },
 }

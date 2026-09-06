@@ -99,6 +99,17 @@ def snowflake_error_handler(request: Request, exc: snowflake.connector.Error):
     )
 
 
+@app.get("/", include_in_schema=False)
+def root():
+    return {
+        "service": "ReliefTrace API",
+        "status": "ok",
+        "docs": None if settings.is_production else "/docs",
+        "health": "/health",
+        "endpoints": "/api",
+    }
+
+
 app.include_router(api_router)
 
 

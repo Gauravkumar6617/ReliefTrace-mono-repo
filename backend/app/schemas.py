@@ -17,6 +17,7 @@ class ZoneGap(BaseModel):
     quantity_fulfilled: float
     unmet_need: float
     urgency_level: str
+    unit: str = ""
 
 
 class ResponseTrendPoint(BaseModel):
@@ -32,6 +33,7 @@ class ResourceBreakdown(BaseModel):
     total_needed: float
     total_fulfilled: float
     unmet_need: float
+    unit: str = ""
 
 
 class RecentDelivery(BaseModel):

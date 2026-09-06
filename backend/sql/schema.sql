@@ -12,7 +12,9 @@ CREATE TABLE IF NOT EXISTS RELIEF_REQUESTS (
     QUANTITY_NEEDED       NUMBER NOT NULL,
     QUANTITY_FULFILLED     NUMBER NOT NULL DEFAULT 0,
     URGENCY_LEVEL        STRING NOT NULL,  -- low / medium / critical
-    REQUEST_DATE         DATE NOT NULL
+    REQUEST_DATE         DATE NOT NULL,
+    UNIT                 STRING,           -- litres / kg / kits / tents / sets
+    AFFECTED_POPULATION  NUMBER            -- people affected in this district
 );
 
 CREATE TABLE IF NOT EXISTS RELIEF_DELIVERIES (

@@ -59,19 +59,21 @@ _SCHEMA = {
 
 def _build_prompt(gaps: list[ZoneGap], trend: list[ResponseTrendPoint]) -> str:
     gap_lines = "\n".join(
-        f"- {g.zone_name} / {g.resource_type}: needed {g.quantity_needed:.0f}, "
-        f"fulfilled {g.quantity_fulfilled:.0f}, unmet {g.unmet_need:.0f}, urgency={g.urgency_level}"
-        for g in gaps[:30]
+        f"- {g.zone_name} / {g.resource_type}: needed {g.quantity_needed:.0f} {g.unit}, "
+        f"fulfilled {g.quantity_fulfilled:.0f} {g.unit}, unmet {g.unmet_need:.0f} {g.unit} "
+        f"({(100 * g.unmet_need / g.quantity_needed) if g.quantity_needed else 0:.0f}% of need), "
+        f"urgency={g.urgency_level}"
+        for g in gaps[:40]
     )
-    trend_summary = (
-        f"{len(trend)} days of data; "
-        f"total requested {sum(t.quantity_requested for t in trend):.0f}, "
-        f"total delivered {sum(t.quantity_delivered for t in trend):.0f}."
-    )
+    trend_summary = f"{len(trend)} days of activity; {sum(t.deliveries_count for t in trend)} deliveries logged."
     return (
-        "Prioritise which zones need urgent intervention first, and why.\n\n"
-        f"Response trend summary: {trend_summary}\n\n"
-        f"Zone resource gaps (sorted by unmet need, most severe first):\n{gap_lines}\n"
+        "Need figures below are computed from real affected-population data for the "
+        "2024 Assam and 2025 Punjab floods using Sphere Handbook minimum standards. "
+        "Units differ per resource (litres, kg, kits, tents, sets) - never compare or "
+        "add quantities across different units; compare the % of need unmet instead.\n\n"
+        "Prioritise which districts need urgent intervention first, and why.\n\n"
+        f"Delivery activity: {trend_summary}\n\n"
+        f"District resource gaps (sorted by absolute unmet need):\n{gap_lines}\n"
     )
 
 

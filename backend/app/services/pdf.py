@@ -84,25 +84,30 @@ def build_briefing_pdf() -> bytes:
             story.append(Spacer(1, 4))
 
     story.append(Paragraph("Top 10 highest-urgency zone gaps", h2))
-    rows = [["Zone", "Resource", "Needed", "Fulfilled", "Unmet", "Urgency"]]
+    rows = [["Zone", "Resource", "Unit", "Needed", "Fulfilled", "Unmet", "Urgency"]]
     for g in gaps:
         rows.append([
             g.zone_name,
             g.resource_type,
+            g.unit,
             f"{g.quantity_needed:,.0f}",
             f"{g.quantity_fulfilled:,.0f}",
             f"{g.unmet_need:,.0f}",
             g.urgency_level.title(),
         ])
-    table = Table(rows, hAlign="LEFT", colWidths=[46 * mm, 24 * mm, 20 * mm, 22 * mm, 20 * mm, 20 * mm])
+    table = Table(
+        rows,
+        hAlign="LEFT",
+        colWidths=[38 * mm, 20 * mm, 14 * mm, 24 * mm, 24 * mm, 24 * mm, 18 * mm],
+    )
     table.setStyle(
         TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), _BRAND),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
-            ("ALIGN", (5, 0), (5, -1), "CENTER"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("ALIGN", (3, 0), (5, -1), "RIGHT"),
+            ("ALIGN", (6, 0), (6, -1), "CENTER"),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#faf8f3")]),
             ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d9d4c9")),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),

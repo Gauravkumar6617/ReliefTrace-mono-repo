@@ -47,6 +47,7 @@ def zone_gaps() -> list[ZoneGap]:
         SELECT
             ZONE_NAME,
             RESOURCE_TYPE,
+            MAX(UNIT) AS UNIT,
             SUM(QUANTITY_NEEDED) AS QUANTITY_NEEDED,
             SUM(QUANTITY_FULFILLED) AS QUANTITY_FULFILLED,
             SUM(QUANTITY_NEEDED) - SUM(QUANTITY_FULFILLED) AS UNMET_NEED,
@@ -64,6 +65,7 @@ def zone_gaps() -> list[ZoneGap]:
         ZoneGap(
             zone_name=row["ZONE_NAME"],
             resource_type=row["RESOURCE_TYPE"],
+            unit=row.get("UNIT") or "",
             quantity_needed=row["QUANTITY_NEEDED"],
             quantity_fulfilled=row["QUANTITY_FULFILLED"],
             unmet_need=row["UNMET_NEED"],
@@ -71,6 +73,22 @@ def zone_gaps() -> list[ZoneGap]:
         )
         for row in run_query(sql)
     ]
+
+
+@cached(ttl=_INSIGHT_TTL)
+def affected_population() -> int:
+    """Total people affected across all districts in the need dataset (one
+    figure per district, not summed per resource)."""
+    rows = run_query(
+        """
+        SELECT COALESCE(SUM(POP), 0) AS TOTAL FROM (
+            SELECT ZONE_NAME, MAX(AFFECTED_POPULATION) AS POP
+            FROM RELIEF_REQUESTS
+            GROUP BY ZONE_NAME
+        )
+        """
+    )
+    return int(rows[0]["TOTAL"] or 0)
 
 
 @cached(ttl=_INSIGHT_TTL)
@@ -113,6 +131,7 @@ def resource_breakdown() -> list[ResourceBreakdown]:
     sql = """
         SELECT
             RESOURCE_TYPE,
+            MAX(UNIT) AS UNIT,
             SUM(QUANTITY_NEEDED) AS TOTAL_NEEDED,
             SUM(QUANTITY_FULFILLED) AS TOTAL_FULFILLED,
             SUM(QUANTITY_NEEDED) - SUM(QUANTITY_FULFILLED) AS UNMET_NEED
@@ -123,6 +142,7 @@ def resource_breakdown() -> list[ResourceBreakdown]:
     return [
         ResourceBreakdown(
             resource_type=row["RESOURCE_TYPE"],
+            unit=row.get("UNIT") or "",
             total_needed=row["TOTAL_NEEDED"],
             total_fulfilled=row["TOTAL_FULFILLED"],
             unmet_need=row["UNMET_NEED"],

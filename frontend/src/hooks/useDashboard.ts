@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   api,
+  type DashboardSnapshot,
   type RecentDelivery,
   type ResourceBreakdown,
   type ResponseTrendPoint,
@@ -26,7 +27,7 @@ export interface DashboardState {
   error: string | null;
   live: LiveStatus;
   stats: {
-    totalUnmet: number;
+    peopleAffected: number;
     criticalZones: number;
     verifiedDeliveries: number;
   };
@@ -41,17 +42,14 @@ export function useDashboard(): DashboardState {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState<LiveStatus>("connecting");
+  const [peopleAffected, setPeopleAffected] = useState(0);
 
-  const applySnapshot = useCallback((snap: {
-    zone_gaps: ZoneGap[];
-    resource_breakdown: ResourceBreakdown[];
-    response_trend: ResponseTrendPoint[];
-    recent_deliveries: RecentDelivery[];
-  }) => {
+  const applySnapshot = useCallback((snap: DashboardSnapshot) => {
     setZoneGaps(snap.zone_gaps);
     setResourceBreakdown(snap.resource_breakdown);
     setResponseTrend(snap.response_trend);
     setRecentDeliveries(snap.recent_deliveries);
+    setPeopleAffected(snap.affected_population);
   }, []);
 
   const reload = useCallback(() => {
@@ -103,13 +101,13 @@ export function useDashboard(): DashboardState {
 
   const stats = useMemo(
     () => ({
-      totalUnmet: zoneGaps.reduce((sum, g) => sum + Math.max(0, g.unmet_need), 0),
+      peopleAffected,
       criticalZones: new Set(
         zoneGaps.filter((g) => g.urgency_level === "critical").map((g) => g.zone_name),
       ).size,
       verifiedDeliveries: recentDeliveries.filter((d) => d.solana_tx_sig).length,
     }),
-    [zoneGaps, recentDeliveries],
+    [peopleAffected, zoneGaps, recentDeliveries],
   );
 
   return {

@@ -58,12 +58,16 @@ const URGENCY_FILL: Record<UrgencyLevel, string> = {
 
 interface ZoneUrgencyRow {
   zone_name: string;
-  unmet_need: number;
+  unmet_pct: number; // worst (highest) % of need unmet across the zone's resources
   urgency_level: UrgencyLevel;
 }
 
-// Collapse the per-(zone, resource) gap rows into one bar per zone: total
-// unmet need, coloured by that zone's worst urgency.
+const pctUnmet = (g: ZoneGap) =>
+  g.quantity_needed > 0 ? (100 * Math.max(0, g.unmet_need)) / g.quantity_needed : 0;
+
+// One bar per zone: the worst unmet % among its resources (units differ per
+// resource, so a percentage is the only honest way to compare zones), coloured
+// by that zone's worst urgency.
 function toZoneUrgency(gaps: ZoneGap[]): ZoneUrgencyRow[] {
   const byZone = new Map<string, ZoneUrgencyRow>();
   for (const g of gaps) {
@@ -74,11 +78,11 @@ function toZoneUrgency(gaps: ZoneGap[]): ZoneUrgencyRow[] {
         : g.urgency_level;
     byZone.set(g.zone_name, {
       zone_name: g.zone_name,
-      unmet_need: (prev?.unmet_need ?? 0) + Math.max(0, g.unmet_need),
+      unmet_pct: Math.max(prev?.unmet_pct ?? 0, pctUnmet(g)),
       urgency_level: worst,
     });
   }
-  return [...byZone.values()].sort((a, b) => b.unmet_need - a.unmet_need);
+  return [...byZone.values()].sort((a, b) => b.unmet_pct - a.unmet_pct);
 }
 
 export function Dashboard() {
@@ -221,12 +225,20 @@ export function Dashboard() {
   };
 
   const ASK_SAMPLES = [
-    "Which zone has the worst medical shortage?",
-    "How much water has been delivered so far?",
-    "Are deliveries keeping up with requests?",
+    "Which district has the worst medical shortage?",
+    "How many people are affected in total?",
+    "Which Punjab districts still have critical water gaps?",
   ];
 
-  const { totalUnmet, criticalZones, verifiedDeliveries } = stats;
+  const { peopleAffected, criticalZones, verifiedDeliveries } = stats;
+
+  // Units differ per resource, so plot coverage as a percentage of need met.
+  const resourceCoverage = resourceBreakdown.map((r) => ({
+    resource_type: r.resource_type,
+    unit: r.unit,
+    fulfilled_pct: r.total_needed > 0 ? (100 * r.total_fulfilled) / r.total_needed : 0,
+    unmet_pct: r.total_needed > 0 ? (100 * Math.max(0, r.unmet_need)) / r.total_needed : 0,
+  }));
   const zoneUrgency = toZoneUrgency(zoneGaps);
 
   // --- Zone Resource Gaps: client-side urgency filter + column sort ---------
@@ -288,7 +300,10 @@ export function Dashboard() {
           <h1>Aid you can actually verify.</h1>
           <p>
             Log a relief contribution and watch it get recorded on a public blockchain, then see
-            live zone needs and an AI situation briefing.
+            district needs and an AI situation briefing. Need estimates are calculated from real
+            affected-population data (2024 Assam floods, 2025 Punjab floods) using Sphere Handbook
+            humanitarian minimum standards — not live operational feeds, since granular real-time
+            need data isn&rsquo;t publicly available at this resolution.
           </p>
         </div>
         <div className="header-actions">
@@ -440,18 +455,18 @@ export function Dashboard() {
         ) : (
           <>
             <div className="stat-card">
-              <span className="stat-label">Total Unmet Need</span>
+              <span className="stat-label">People Affected</span>
               <span className="stat-value">
-                <CountUp value={Math.round(totalUnmet)} />
+                <CountUp value={peopleAffected} />
               </span>
-              <span className="stat-sub">units still owed across all zones</span>
+              <span className="stat-sub">across 15 districts — 2024 Assam &amp; 2025 Punjab floods</span>
             </div>
             <div className="stat-card stat-card-critical">
-              <span className="stat-label">Zones with Critical Gaps</span>
+              <span className="stat-label">Districts with Critical Gaps</span>
               <span className="stat-value">
                 <CountUp value={criticalZones} />
               </span>
-              <span className="stat-sub">need urgent intervention</span>
+              <span className="stat-sub">&ge;66% of estimated need unmet</span>
             </div>
             <div className="stat-card">
               <span className="stat-label">Verified Deliveries</span>
@@ -466,9 +481,10 @@ export function Dashboard() {
 
       <section className="panel-grid">
         <div className="panel panel-wide">
-          <h2>Zone Needs by Urgency</h2>
+          <h2>District Needs by Urgency</h2>
           <p className="table-hint">
-            Total unmet need per zone, coloured by the zone's most severe urgency level.
+            Worst unmet share across a district's resources (units differ per resource, so
+            this compares as a percentage), coloured by its most severe urgency level.
           </p>
           {loading ? (
             <SkeletonChart height={360} />
@@ -479,16 +495,22 @@ export function Dashboard() {
               <ResponsiveContainer width="100%" height={Math.max(260, zoneUrgency.length * 26)}>
                 <BarChart data={zoneUrgency} layout="vertical" margin={{ left: 24, right: 16 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" horizontal={false} />
-                  <XAxis type="number" stroke="var(--axis)" fontSize={12} tickFormatter={(v) => number(Number(v))} />
+                  <XAxis
+                    type="number"
+                    domain={[0, 100]}
+                    stroke="var(--axis)"
+                    fontSize={12}
+                    tickFormatter={(v) => `${Math.round(Number(v))}%`}
+                  />
                   <YAxis
                     type="category"
                     dataKey="zone_name"
                     stroke="var(--axis)"
                     fontSize={11}
-                    width={140}
+                    width={150}
                   />
-                  <Tooltip formatter={(value) => [number(Number(value)), "Unmet need"]} />
-                  <Bar dataKey="unmet_need" radius={[0, 4, 4, 0]}>
+                  <Tooltip formatter={(value) => [`${Math.round(Number(value))}%`, "Unmet"]} />
+                  <Bar dataKey="unmet_pct" radius={[0, 4, 4, 0]}>
                     {zoneUrgency.map((row) => (
                       <Cell key={row.zone_name} fill={URGENCY_FILL[row.urgency_level]} />
                     ))}
@@ -508,24 +530,33 @@ export function Dashboard() {
         </div>
 
         <div className="panel">
-          <h2>Supply vs. Demand by Resource</h2>
+          <h2>Coverage by Resource</h2>
+          <p className="table-hint">Share of estimated need met so far, per resource type.</p>
           {loading ? (
             <SkeletonChart height={280} />
-          ) : resourceBreakdown.length === 0 ? (
+          ) : resourceCoverage.length === 0 ? (
             <EmptyState />
           ) : (
             <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={resourceBreakdown}>
+              <BarChart data={resourceCoverage}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" />
                 <XAxis dataKey="resource_type" stroke="var(--axis)" fontSize={12} />
-                <YAxis stroke="var(--axis)" fontSize={12} tickFormatter={(v) => number(Number(v))} />
-                <Tooltip formatter={(value) => number(Number(value))} />
+                <YAxis
+                  domain={[0, 100]}
+                  stroke="var(--axis)"
+                  fontSize={12}
+                  tickFormatter={(v) => `${Math.round(Number(v))}%`}
+                />
+                <Tooltip
+                  formatter={(value, name) => [`${Number(value).toFixed(1)}%`, name as string]}
+                />
                 <Legend wrapperStyle={{ fontSize: "0.8rem" }} />
-                <Bar dataKey="total_needed" name="Needed" fill="var(--accent-need)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="fulfilled_pct" name="Met" stackId="c" fill="var(--accent-fulfilled)" />
                 <Bar
-                  dataKey="total_fulfilled"
-                  name="Fulfilled"
-                  fill="var(--accent-fulfilled)"
+                  dataKey="unmet_pct"
+                  name="Unmet"
+                  stackId="c"
+                  fill="var(--accent-need)"
                   radius={[4, 4, 0, 0]}
                 />
               </BarChart>
@@ -535,7 +566,10 @@ export function Dashboard() {
 
         <div className="panel">
           <h2>Response Trend</h2>
-          <p className="table-hint">Requests raised vs. resource units delivered, over the 30-day window.</p>
+          <p className="table-hint">
+            Needs logged vs. deliveries recorded per day (counts — resource quantities
+            aren't comparable across units).
+          </p>
           {loading ? (
             <SkeletonChart height={260} />
           ) : responseTrend.length === 0 ? (
@@ -545,21 +579,26 @@ export function Dashboard() {
               <LineChart data={responseTrend}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--grid)" />
                 <XAxis dataKey="day" stroke="var(--axis)" fontSize={11} />
-                <YAxis stroke="var(--axis)" fontSize={12} tickFormatter={(v) => number(Number(v))} />
+                <YAxis
+                  allowDecimals={false}
+                  stroke="var(--axis)"
+                  fontSize={12}
+                  tickFormatter={(v) => number(Number(v))}
+                />
                 <Tooltip />
                 <Legend wrapperStyle={{ fontSize: "0.8rem" }} />
                 <Line
                   type="monotone"
-                  dataKey="quantity_requested"
-                  name="Requested"
+                  dataKey="requests_count"
+                  name="Needs logged"
                   stroke="var(--accent-need)"
                   strokeWidth={2}
                   dot={false}
                 />
                 <Line
                   type="monotone"
-                  dataKey="quantity_delivered"
-                  name="Delivered"
+                  dataKey="deliveries_count"
+                  name="Deliveries"
                   stroke="var(--accent-fulfilled)"
                   strokeWidth={2}
                   dot={false}
@@ -570,10 +609,10 @@ export function Dashboard() {
         </div>
 
         <div className="panel panel-wide">
-          <h2>Zone Resource Gaps</h2>
+          <h2>District Resource Gaps</h2>
           <p className="table-hint">
-            Unmet need = requested minus fulfilled, per zone and resource. Filter by urgency,
-            click a column to sort.
+            Estimated need (Sphere standards) minus recorded deliveries, per district and
+            resource — each row in its own unit. Filter by urgency, click a column to sort.
           </p>
           {!loading && zoneGaps.length > 0 && (
             <div className="gap-filters">
@@ -591,7 +630,7 @@ export function Dashboard() {
           )}
           <div className="table-wrap">
             {loading ? (
-              <SkeletonTable rows={8} cols={6} />
+              <SkeletonTable rows={8} cols={7} />
             ) : zoneGaps.length === 0 ? (
               <EmptyState />
             ) : (
@@ -602,6 +641,7 @@ export function Dashboard() {
                     <th onClick={() => toggleGapSort("resource_type")}>
                       Resource{sortArrow("resource_type")}
                     </th>
+                    <th>Unit</th>
                     <th onClick={() => toggleGapSort("quantity_needed")}>
                       Needed{sortArrow("quantity_needed")}
                     </th>
@@ -619,6 +659,7 @@ export function Dashboard() {
                     <tr key={`${g.zone_name}-${g.resource_type}`}>
                       <td>{g.zone_name}</td>
                       <td>{g.resource_type}</td>
+                      <td className="unit-cell">{g.unit}</td>
                       <td>{number(g.quantity_needed)}</td>
                       <td>{number(g.quantity_fulfilled)}</td>
                       <td className="unmet-cell">{number(g.unmet_need)}</td>
@@ -631,7 +672,7 @@ export function Dashboard() {
                   ))}
                   {visibleGaps.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="empty-state">
+                      <td colSpan={7} className="empty-state">
                         No {gapUrgency} gaps.
                       </td>
                     </tr>
@@ -820,6 +861,17 @@ export function Dashboard() {
           </div>
         </div>
       </section>
+
+      <footer className="methodology-note">
+        <strong>Methodology.</strong> The 15 districts are real areas affected by the 2024 Assam
+        floods (~400,000 people across 19 districts) and the 2025 Punjab floods (~3.54 million
+        across 13+ districts); affected population is split evenly within each state, since public
+        per-district figures aren&rsquo;t available. Per-resource need is computed from Sphere
+        Handbook (2018) minimum standards — water 15 L/person/day and food ~2.1 kg/person/day over
+        a 30-day window, ~1 medical kit per 500 people, ~1 tent per 5, 1 clothing set per person.
+        Fulfilled amounts are illustrative of early-response gaps, not sourced. Deliveries and
+        their on-chain signatures are real, from live submissions.
+      </footer>
     </div>
   );
 }

@@ -42,15 +42,31 @@ Two tables in `RELIEFTRACE_DB.PUBLIC`:
 
 | Table | What it holds |
 | --- | --- |
-| `RELIEF_REQUESTS` | zone, resource type, quantity needed, quantity fulfilled, urgency, date |
-| `RELIEF_DELIVERIES` | donor, email, zone, resource, quantity, date, **Solana tx signature**, source (`seed` / `public`) |
+| `RELIEF_REQUESTS` | district, resource type, quantity needed + **unit**, quantity fulfilled, urgency, date, **affected population** |
+| `RELIEF_DELIVERIES` | donor org, cause note, email, zone, resource, quantity, date, **Solana tx signature**, source (`public`) |
 
-Every analytics endpoint is a real SQL query against Snowflake — zone-level gap
-rollups, a 30-day requested-vs-delivered trend, and a per-resource
-supply-vs-demand breakdown. Contributions submitted through the site are
-`INSERT`ed straight into `RELIEF_DELIVERIES` with their confirmed on-chain
-signature. Connection is pooled and query results are cached (see Redis below)
-so the dashboard stays fast without hammering the warehouse.
+**The need side is grounded in real events.** `RELIEF_REQUESTS` is a fixed
+dataset of 15 districts hit by the **2024 Assam floods** (~400,000 people across
+19 districts) and the **2025 Punjab floods** (~3.54 million across 13+
+districts). Affected population is split evenly within each state — public
+per-district figures aren't available — and per-resource `QUANTITY_NEEDED` is
+computed from **Sphere Handbook (2018) humanitarian minimum standards** (water
+15 L/person/day and food ~2.1 kg/person/day over a 30-day window, ~1 medical kit
+per 500 people, ~1 tent per 5, 1 clothing set per person). Each row carries its
+`UNIT` (litres / kg / kits / tents / sets); `QUANTITY_FULFILLED` starts low to
+reflect early-response gaps and `URGENCY_LEVEL` is derived from the resulting
+unmet-need %. This is a calculated estimate, not a live operational feed —
+granular real-time need data isn't published at this resolution.
+
+The **delivery side is real**: every `RELIEF_DELIVERIES` row comes from a live
+dashboard submission, `INSERT`ed with its confirmed on-chain signature. No seed
+deliveries.
+
+Every analytics endpoint is a real SQL query against Snowflake — district gap
+rollups, per-resource coverage, a daily needs-vs-deliveries trend, and total
+people affected. Connection is pooled and results cached (see Redis below).
+Because units differ per resource, the dashboard never sums across them — it
+compares as a **percentage of need unmet**.
 
 ### ◎ Solana — the verification layer
 
@@ -137,10 +153,11 @@ snow-donation/
 │   │   ├── services/             insights, contributions, briefing, solana
 │   │   └── api/routes/           health, insights, contribute, briefing, stream
 │   ├── scripts/                  run-once utilities (python -m scripts.<name>)
-│   │   ├── generate_data.py      synthetic requests/deliveries → data/*.csv
-│   │   ├── load_to_snowflake.py  PUT + COPY INTO
-│   │   └── anchor_deliveries.py  batch-anchor seed rows on Solana (optional)
+│   │   ├── generate_data.py      real-district need dataset (Sphere standards) → data/relief_requests.csv
+│   │   ├── load_to_snowflake.py  PUT + TRUNCATE + COPY INTO (RELIEF_REQUESTS only)
+│   │   └── anchor_deliveries.py  batch-anchor rows missing a signature (optional)
 │   ├── sql/schema.sql            table definitions (run in Snowsight)
+│   ├── sql/migrations/           incremental ALTERs (run in order after schema.sql)
 │   ├── data/                     generated CSVs (git-ignored)
 │   └── keys/                     Snowflake key + Solana wallet (git-ignored)
 └── frontend/
@@ -216,17 +233,22 @@ broadcasts in-memory without it.
 - **Neither:** leave `REDIS_URL` unset — it falls back to an in-process cache
   (works fine, just doesn't survive a restart).
 
-### 3. Snowflake schema + data
+### 3. Snowflake schema + need data
 
-Run **`backend/sql/schema.sql`** in a Snowsight worksheet (creates the
-warehouse, database, and both tables).
+Run **`backend/sql/schema.sql`** in a Snowsight worksheet (creates the database
+and both tables), then apply the migrations in **`backend/sql/migrations/`** in
+order (they add `CAUSE_NOTE` to deliveries and `UNIT` / `AFFECTED_POPULATION` to
+requests).
 
-Optionally seed the need-side analytics with synthetic data (from `backend/`):
+Load the real-district need dataset (from `backend/`):
 
 ```bash
-python -m scripts.generate_data              # ~200 requests, ~150 deliveries → data/
-doppler run -- python -m scripts.load_to_snowflake
+python -m scripts.generate_data              # 75 request rows (15 districts x 5 resources) → data/
+doppler run -- python -m scripts.load_to_snowflake   # TRUNCATE + reload RELIEF_REQUESTS only
 ```
+
+`load_to_snowflake` never touches `RELIEF_DELIVERIES` — those rows are live
+submissions. The dataset is fixed and deterministic, so re-running is safe.
 
 ### 4. Fund the Solana devnet wallet
 
@@ -280,6 +302,12 @@ identity.
   scale out (the cache and the SSE fan-out share Redis), but slowapi's
   rate-limit counters live in process memory — behind multiple replicas each
   gets its own allowance. Point slowapi at Redis to fix.
-- **Seed data is optional.** If you skip the Snowflake seed load, the need-side
-  panels stay empty until requests exist — the delivery side is fully driven by
-  the live form.
+- **Need data is a calculated estimate.** The district need figures come from
+  Sphere-standard math on reported affected-population totals, not a live
+  operational feed — that granularity of real-time need data isn't public. The
+  `QUANTITY_FULFILLED` values on `RELIEF_REQUESTS` are illustrative of
+  early-response gaps, not sourced; only the deliveries (and their on-chain
+  signatures) are real.
+- **Mixed units.** Resources are measured in different units (litres, kg, kits,
+  tents, sets), so the dashboard compares by *percentage of need unmet* and
+  never sums raw quantities across resources.

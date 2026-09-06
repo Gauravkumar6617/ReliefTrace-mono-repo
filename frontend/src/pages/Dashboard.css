@@ -760,3 +760,22 @@ table.sortable th:hover { color: var(--brand, #2f6f62); }
     padding: 0.85rem;
   }
 }
+
+/* --- real-data pass: units + methodology --------------------------- */
+.unit-cell {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+.methodology-note {
+  margin-top: 2rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+.methodology-note strong {
+  color: var(--text);
+}
